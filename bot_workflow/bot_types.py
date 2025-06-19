@@ -1,6 +1,6 @@
 import asyncio
 from abc import ABC
-from core.bot_workflow.message_snapshot import MessageSnapshot
+from bot_workflow.message_snapshot import MessageSnapshot
 
 class MessageSnapshotHistory:
     def __init__(self, initial_history: list[MessageSnapshot]  | None = None, memory_length: int = 14):

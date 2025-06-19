@@ -1,9 +1,9 @@
 import time
 
-from core.ai_apis import providers
+from ai_apis import providers
 from abc import ABC, abstractmethod
-from core.bot_workflow.response_logs import SimpleDebugLogger
-from core.bot_workflow.ai_bot import Prompt, LLMClient, CustomBotData
+from bot_workflow.response_logs import SimpleDebugLogger
+from bot_workflow.ai_bot import Prompt, LLMClient, CustomBotData
 
 class ResponseStep(ABC):
     def __init__(self, logger: SimpleDebugLogger):

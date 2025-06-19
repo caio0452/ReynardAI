@@ -5,11 +5,11 @@ import traceback
 
 from io import StringIO
 from discord.ext import commands
-from core.util.rate_limits import RateLimiter, RateLimit
-from core.bot_workflow.message_snapshot import MessageSnapshot
-from core.bot_workflow.ai_bot import CustomBotData, AIDiscordBotResponder
-from core.bot_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
-from core.bot_workflow.discord_message_parser import DiscordMessageParser, DenialReason, SpecialFunctionFlags
+from util.rate_limits import RateLimiter, RateLimit
+from bot_workflow.message_snapshot import MessageSnapshot
+from bot_workflow.ai_bot import CustomBotData, AIDiscordBotResponder
+from bot_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
+from bot_workflow.discord_message_parser import DiscordMessageParser, DenialReason, SpecialFunctionFlags
 
 MSG_LOG_FILE_REPLY = "Verbose logs for message ID {} attached (only last 10 are stored)"
 

@@ -5,3 +5,4 @@ knowledge/*
 app.log
 pyrightconfig.json
 .env
+.mypy_cache

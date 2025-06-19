@@ -3,9 +3,9 @@ import logging
 from typing import Dict, List
 from pydantic import BaseModel, Field, field_validator, ValidationError
 
-from core.ai_apis.providers import ProviderData
-from core.ai_apis.types import LLMRequestParams, Prompt
-from core.util.environment_vars import parse_api_key_in_config
+from ai_apis.providers import ProviderData
+from ai_apis.api_types import LLMRequestParams, Prompt
+from util.environment_vars import parse_api_key_in_config
 
 class FalImageGenModuleConfig(BaseModel):
     enabled: bool

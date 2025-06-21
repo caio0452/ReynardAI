@@ -1,4 +1,4 @@
-from util.rate_limits import RateLimiter, RateLimit
+from ..util.rate_limits import RateLimiter, RateLimit
 from dataclasses import dataclass
 from discord.ext import commands
 from enum import Enum, auto

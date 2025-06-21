@@ -4,8 +4,8 @@ import hashlib
 from enum import Enum
 from typing import Any
 from dataclasses import dataclass
-from ai_apis.providers import ProviderData
-from ai_apis.client import EmbeddingsClient
+from ..ai_apis.providers import ProviderData
+from ..ai_apis.client import EmbeddingsClient
 from pymilvus import MilvusClient, AsyncMilvusClient, DataType
 
 class VectorDatabaseConnection:

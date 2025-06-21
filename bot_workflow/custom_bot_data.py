@@ -1,7 +1,7 @@
 from ai_apis import providers
-from bot_workflow.profile_loader import Profile
-from bot_workflow.knowledge import KnowledgeIndex, LongTermMemoryIndex
-from bot_workflow.bot_types import MessageSnapshotHistory, SynchronizedMessageHistory, AIBotData
+from ..bot_workflow.profile_loader import Profile
+from ..bot_workflow.knowledge import KnowledgeIndex, LongTermMemoryIndex
+from ..bot_workflow.bot_types import MessageSnapshotHistory, SynchronizedMessageHistory, AIBotData
 
 class CustomBotData(AIBotData):
     def __init__(self,

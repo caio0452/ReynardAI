@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from ai_apis.client import LLMClient
-from ai_apis.api_types import LLMRequestParams, Prompt
-from bot_workflow.custom_bot_data import CustomBotData
-from bot_workflow.response_logs import SimpleDebugLogger
-from bot_workflow.bot_types import MessageSnapshot, MessageSnapshotHistory
-from bot_workflow.response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
+from ..ai_apis.client import LLMClient
+from ..ai_apis.api_types import LLMRequestParams, Prompt
+from ..bot_workflow.custom_bot_data import CustomBotData
+from ..bot_workflow.response_logs import SimpleDebugLogger
+from ..bot_workflow.bot_types import MessageSnapshot, MessageSnapshotHistory
+from ..bot_workflow.response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
 
 import re
 import json

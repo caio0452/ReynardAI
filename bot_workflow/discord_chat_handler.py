@@ -3,7 +3,6 @@ import re
 import discord
 import traceback
 
-from io import StringIO
 from discord.ext import commands
 from util.rate_limits import RateLimiter, RateLimit
 from bot_workflow.message_snapshot import MessageSnapshot
@@ -77,7 +76,6 @@ class DiscordChatHandler(commands.Cog):
 
     async def respond_with_llm(self, user_message: discord.Message, *, verbose: bool=False):
         await self.memorize_discord_message(user_message, pending=True, add_after_id=None)
-
         typing_msg = await user_message.reply(
             self.ai_bot.profile.lang["bot_typing"], 
             mention_author=False,
@@ -85,7 +83,6 @@ class DiscordChatHandler(commands.Cog):
         
         try:
             resp = await self.generate_response(user_message, verbose)
-
             if self.ai_bot.profile.options.only_ping_on_response_finish:
                 base_resp_msg: discord.Message = await self.send_chunked_with_disclaimers(
                     resp.text,
@@ -104,7 +101,7 @@ class DiscordChatHandler(commands.Cog):
 
             if verbose:
                 # TODO: this edit is potentially superfluous
-                log_file = StringIO(resp.verbose_log_output)
+                log_file = io.BytesIO(resp.verbose_log_output.encode('utf-8'))
                 await base_resp_msg.edit(attachments=[discord.File(log_file, filename="log.txt")])
   
             await self.memorize_message(
@@ -235,6 +232,9 @@ class DiscordChatHandler(commands.Cog):
             )
         if self.ai_bot.long_term_memory is not None:
             await self.ai_bot.long_term_memory.memorize(message)
+
+    async def forget_message(self, message: MessageSnapshot) -> None:
+        await self.ai_bot.recent_history.remove(message.message_id)
         
     async def memorize_discord_message(self, message: discord.Message, *, pending: bool, add_after_id: None | int) -> None:
         to_memorize = await MessageSnapshot.of_discord_message(message)
@@ -247,8 +247,6 @@ class DiscordChatHandler(commands.Cog):
             await self.ai_bot.long_term_memory.memorize(to_memorize)
 
     async def handle_error(self, reply_to: discord.Message, error: Exception):
-        # TODO: implement message forgetting
-        # await self.forget_message(message)
-        # await self.forget_message(reply)
-        traceback.print_exc()
+        await self.forget_message(await MessageSnapshot.of_discord_message(reply_to))
         await reply_to.reply(content=f"There was an error: ```{str(error)[:1000]}```") # TODO: send lang message if possible
+        traceback.print_exc()

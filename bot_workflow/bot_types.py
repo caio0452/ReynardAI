@@ -28,6 +28,9 @@ class MessageSnapshotHistory:
     async def remove(self, message: MessageSnapshot):
         self._memory = [mem_msg for mem_msg in self._memory if mem_msg.message_id != message.message_id]
 
+    async def remove_id(self, message_id: int):
+        self._memory = [mem_msg for mem_msg in self._memory if mem_msg.message_id != message_id]
+
     def clone(self):
         new_instance = MessageSnapshotHistory(
             initial_history=[m for m in self._memory], 
@@ -57,6 +60,10 @@ class SynchronizedMessageHistory:
             await self.backing_history.add(message)
             if pending:
                 self._pending_message_ids.add(message.message_id)
+
+    async def remove(self, message_id: int):
+        async with self._lock:
+            await self.backing_history.remove_id(message_id)
 
     async def add_after(self, id: int, message: MessageSnapshot, *, pending=False):
         async with self._lock:

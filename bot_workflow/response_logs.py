@@ -1,6 +1,6 @@
-from io import StringIO
-
 import logging
+
+from io import StringIO
 
 class SimpleDebugLogger:
     def __init__(self, name: str):

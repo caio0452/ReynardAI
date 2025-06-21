@@ -32,7 +32,7 @@ class AIDiscordBotResponder:
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
     async def _get_usable_message_history_before(self, message: discord.Message) -> MessageSnapshotHistory:
-        USABLE_HISTORY_LENGTH = 14
+        USABLE_HISTORY_LENGTH = self.bot_data.profile.options.recent_message_history_length
         usable_history = await self.bot_data.recent_history.get_finalized_message_history()
         last_n_messages = [msg for msg in usable_history._memory][-USABLE_HISTORY_LENGTH:]
         last_n_messages.append(await MessageSnapshot.of_discord_message(message))

@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
-import datetime
 import discord
+import datetime
+from dataclasses import dataclass, field
 
 @dataclass
 class MessageSnapshot:

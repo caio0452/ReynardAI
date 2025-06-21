@@ -1,4 +1,4 @@
-from ai_apis import providers
+from ..ai_apis import providers
 from ..bot_workflow.profile_loader import Profile
 from ..bot_workflow.knowledge import KnowledgeIndex, LongTermMemoryIndex
 from ..bot_workflow.bot_types import MessageSnapshotHistory, SynchronizedMessageHistory, AIBotData

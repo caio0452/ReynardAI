@@ -1,20 +1,21 @@
 import io
-import re
 import discord
 import traceback
+from chat.chatroom import Chatroom
+from chat.message_history import SynchronizedMessageHistory
+import message_processing_util
 
-from discord.ext import commands
+from ..events.event_bus import AsyncEventBus
+from .message_snapshot import MessageSnapshot
 from ..util.rate_limits import RateLimiter, RateLimit
-from ..bot_workflow.message_snapshot import MessageSnapshot
-from ..bot_workflow.ai_bot import CustomBotData, AIDiscordBotResponder
+from ..events.message_events import MessageSnapshotEvent
+from ..bot_workflow.ai_responder import CustomBotData, AIDiscordBotResponder
 from ..bot_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
-from ..bot_workflow.discord_message_parser import DiscordMessageParser, DenialReason, SpecialFunctionFlags
 
 MSG_LOG_FILE_REPLY = "Verbose logs for message ID {} attached (only last 10 are stored)"
 
-class DiscordChatHandler(commands.Cog):
-    def __init__(self, discord_bot: commands.Bot, ai_bot_data: CustomBotData):
-        self.bot: commands.Bot = discord_bot
+class DiscordChatHandler:
+    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot_data: CustomBotData):
         self.rate_limiter = RateLimiter(
             RateLimit(n_messages=3, seconds=10),
             RateLimit(n_messages=10, seconds=60),
@@ -22,37 +23,44 @@ class DiscordChatHandler(commands.Cog):
             RateLimit(n_messages=100, seconds=2 * 3600),
             RateLimit(n_messages=250, seconds=8 * 3600)
         )
-        self.message_parser = DiscordMessageParser(self.bot)
+        self.chatroom = Chatroom(SynchronizedMessageHistory(),0) # TODO: support per channel/server/DM chat, etc
         self.ai_bot = ai_bot_data
         self.logger = SimpleDebugLogger("ChatHandlerLogger")
+        bus.subscribe(self.on_message)
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message) -> None:
+    @staticmethod
+    def _get_discord_msg(event: MessageSnapshotEvent) -> discord.Message:
+        if isinstance(event.raw_msg_object, discord.Message):
+            return event.raw_msg_object
+        else:
+            raise RuntimeError(f"MessageSnapshotEvent has no valid underlying discord Message object: {event.raw_msg_object} ({type(event.raw_msg_object)}). Message snapshot: {event.snapshot}")
+
+    async def on_message(self, event: MessageSnapshotEvent) -> None:
+        message = self._get_discord_msg(event)
         if message.author.bot: 
             return
         
-        ctx = self.message_parser.parse_message(message)
-        if ctx.denial_reason == DenialReason.DID_NOT_PING:
-            return
-        if ctx.denial_reason == DenialReason.RATE_LIMITED:
-            await message.reply("You are rate limited, please wait")
-            return
-        if ctx.denial_reason == DenialReason.TOO_LONG:
-            for emoji in ['🇹', '🇱', '🇩', '🇷']:
-                await message.add_reaction(emoji)
-            return
-        if SpecialFunctionFlags.VIEW_MESSAGE_LOGS in ctx.called_functions:
-            await self.handle_log_request(message)
+        mention_ids = [user.id for user in message.mentions]
+        if self.ai_bot.discord_bot_id not in mention_ids:
             return
         
-        verbose = SpecialFunctionFlags.REQUEST_VERBOSE_REPLY in ctx.called_functions
+        self.rate_limiter.register_request(event.snapshot.sender_id)
+        if self.rate_limiter.is_rate_limited(event.snapshot.sender_id):
+            await message.reply("⚠️ You are rate limited, please wait")
+            return
+        
+        verbose = message.content.endswith("--v")
+        logs = message.content.endswith("--l")
+        if logs:
+            await self.handle_log_request(message)
+            return 
+        
         await self.respond_with_llm(message, verbose=verbose)
 
     async def handle_log_request(self, message: discord.Message):
-        ctx = self.message_parser.parse_message(message)
         try:
             num = None
-            for num_str in ctx.sanitized_content.split(" "):
+            for num_str in message.content.split(" "):
                 if num_str.isdigit():
                     num = int(num_str)
                     break
@@ -72,7 +80,7 @@ class DiscordChatHandler(commands.Cog):
             )
         except ValueError:
             invalid_log_msg = self.ai_bot.profile.lang["invalid_log_request"]
-            await message.reply(invalid_log_msg.format(ctx.sanitized_content))
+            await message.reply(invalid_log_msg.format(message.content))
 
     async def respond_with_llm(self, user_message: discord.Message, *, verbose: bool=False):
         await self.memorize_discord_message(user_message, pending=True, add_after_id=None)
@@ -110,6 +118,7 @@ class DiscordChatHandler(commands.Cog):
                     nick=base_resp_msg.author.name,
                     sent=base_resp_msg.created_at,
                     is_bot=True,
+                    sender_id=base_resp_msg.author.id,
                     message_id=base_resp_msg.id 
                 ),
                 pending=False,
@@ -120,68 +129,9 @@ class DiscordChatHandler(commands.Cog):
         except Exception as e:
             await self.handle_error(user_message, e)
 
-    async def generate_response(self, to_respond: discord.Message, verbose: bool) -> AIDiscordBotResponder.Response:
+    async def generate_response(self, to_respond: discord.Message, verbose: bool) -> AIBotResponder.Response:
         resp = AIDiscordBotResponder(self.ai_bot, to_respond, verbose)
         return await resp.create_response()
-
-    def _chunk_by_length_and_spaces(self, full_text: str, max_chunk_length: int) -> list[str]:
-        chunks: list[str] = []
-        current_chunk = ""
-        partial_leftover_word = ""
-        words = full_text.split(" ") 
-
-        for word in words:
-            if len(partial_leftover_word) > 0:
-                current_chunk += partial_leftover_word + " "
-                partial_leftover_word = ""
-
-            if len(current_chunk) + len(word) <= max_chunk_length:
-                current_chunk += " " + word
-            else:
-                # If the word is very large, maybe this is not regular text that's meant to be split in spaces
-                if len(word) < max_chunk_length // 2:
-                    len_until_max = max_chunk_length - len(word)
-                    partial_word = word[0:len_until_max]
-                    current_chunk += partial_word
-                    partial_leftover_word = word.replace(partial_word, "")
-                else:
-                    chunks.append(current_chunk)
-                    current_chunk = ""
-
-        if current_chunk != "":
-            chunks.append(current_chunk)
-            
-        return chunks
-    
-    def _balance_code_block_fences(self, *, original_text: str, chunked_text: list[str]) -> list[str]:
-        fence_pattern = re.compile(r"```(\w+)?")
-        balanced: list[str] = []
-        inside_code = False
-
-        def last_fence_language(text: str, *, before_pos: int) -> str:
-            matches = list(fence_pattern.finditer(text, 0, before_pos))
-            if not matches:
-                return ""
-            lang = matches[-1].group(1)
-            return lang or ""
-
-        cursor = 0
-        for chunk in chunked_text:
-            fence_count = len(fence_pattern.findall(chunk))
-            
-            if fence_count % 2 == 1:
-                inside_code = not inside_code
-                chunk += "\n```"
-
-            # If inside a code block after closing, next chunk must reopen
-            if inside_code:
-                lang = last_fence_language(original_text, before_pos=cursor)
-                chunk = f"```{lang}\n" + chunk
-
-            balanced.append(chunk)
-            cursor += len(chunk)
-
-        return balanced
 
     async def send_chunked_with_disclaimers(self, resp_str: str, *, reply_to: discord.Message | None, edit_msg: discord.Message | None, ping: bool) -> discord.Message:
         disclaimer = self.ai_bot.profile.lang.get("disclaimer", "")
@@ -192,23 +142,21 @@ class DiscordChatHandler(commands.Cog):
         def strip_newline(chunk):
             return chunk.strip('\r\n') if self.ai_bot.profile.options.remove_trailing_newline else chunk
 
-        raw_chunks = self._chunk_by_length_and_spaces(resp_str, max_chunk_length)
-        '''
+        raw_chunks = message_processing_util.split_by_length(resp_str, max_chunk_length)
         code_balanced_chunks = [
             f"{strip_newline(chunk)}{disclaimer}" 
-            for chunk in self._balance_code_block_fences(original_text=resp_str, chunked_text=raw_chunks)
+            for chunk in message_processing_util.balance_code_fences(raw_chunks)
         ]
-        ''' # TODO: readd
 
         last_msg = None
         if edit_msg is not None:
-            last_msg = await edit_msg.edit(content= raw_chunks[0])
+            last_msg = await edit_msg.edit(content=code_balanced_chunks[0])
             remaining_chunks = raw_chunks[1:]
         elif reply_to is not None:
             if self.ai_bot.profile.options.only_ping_on_response_finish:
-                last_msg = await reply_to.reply(content= raw_chunks[0], silent=True)
+                last_msg = await reply_to.reply(content=code_balanced_chunks[0], silent=True)
             else:
-                last_msg = await reply_to.reply(content= raw_chunks[0], silent=not ping)
+                last_msg = await reply_to.reply(content=code_balanced_chunks[0], silent=not ping)
             remaining_chunks = raw_chunks[1:]
         else:
             raise ValueError("Must specify at least one of: reply_to or edit_msg")

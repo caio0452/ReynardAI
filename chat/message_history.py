@@ -1,6 +1,6 @@
+
 import asyncio
-from abc import ABC
-from ..bot_workflow.message_snapshot import MessageSnapshot
+from .message_snapshot import MessageSnapshot
 
 class MessageSnapshotHistory:
     def __init__(self, initial_history: list[MessageSnapshot]  | None = None, memory_length: int = 14):
@@ -99,7 +99,3 @@ class SynchronizedMessageHistory:
             ret += f"{pending_str}[ID {id} | {msg.sent}] <{msg.nick}{bot_str}> {msg.text}\n"
         return ret
         
-class AIBotData(ABC):
-    def __init__(self, name: str, recent_memory: MessageSnapshotHistory | None = None):
-        self.name = name
-        self.memory = recent_memory

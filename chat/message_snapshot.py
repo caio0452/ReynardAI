@@ -7,6 +7,7 @@ class MessageSnapshot:
     text: str
     nick: str
     is_bot: bool
+    sender_id: int
     message_id: int
     sent: datetime.datetime
     attachment_urls: list[str] = field(default_factory=list)
@@ -27,5 +28,6 @@ class MessageSnapshot:
             nick=message.author.display_name,
             sent=message.created_at,
             is_bot=message.author.bot,
+            sender_id=message.author.id,
             message_id=message.id
         )

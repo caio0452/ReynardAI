@@ -3,7 +3,7 @@ import time
 from ..ai_apis import providers
 from abc import ABC, abstractmethod
 from ..bot_workflow.response_logs import SimpleDebugLogger
-from ..bot_workflow.ai_bot import Prompt, LLMClient, CustomBotData
+from .ai_responder import Prompt, LLMClient, CustomBotData
 
 class ResponseStep(ABC):
     def __init__(self, logger: SimpleDebugLogger):
@@ -18,7 +18,7 @@ class ResponseStep(ABC):
         return await client.send_request(prompt=prompt, params=params)
     
     async def execute(self, bot_data: CustomBotData, message: str) -> str | None:
-        self.bot_data = bot_data
+        self.bot_data: CustomBotData = bot_data
         self.message = message
         start = time.perf_counter()
         ret = await self._run()

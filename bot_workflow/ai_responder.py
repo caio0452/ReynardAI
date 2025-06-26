@@ -1,10 +1,14 @@
 from dataclasses import dataclass
+
+from chat.chatroom import Chatroom
+
 from ..ai_apis.client import LLMClient
+from .custom_bot_data import CustomBotData
+from .response_logs import SimpleDebugLogger
+from ..chat.message_snapshot import MessageSnapshot
+from ..chat.message_history import MessageSnapshotHistory
 from ..ai_apis.api_types import LLMRequestParams, Prompt
-from ..bot_workflow.custom_bot_data import CustomBotData
-from ..bot_workflow.response_logs import SimpleDebugLogger
-from ..bot_workflow.bot_types import MessageSnapshot, MessageSnapshotHistory
-from ..bot_workflow.response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
+from .response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
 
 import re
 import json
@@ -21,19 +25,20 @@ class AIDiscordBotResponder:
         tool_call_result: str | None
         verbose_log_output: str
 
-    def __init__(self, bot_data: CustomBotData, initial_message: discord.Message, verbose: bool=False):
+    def __init__(self, bot_data: CustomBotData, initial_message: discord.Message, chatroom: Chatroom, verbose: bool=False):
         self.verbose = verbose
         self.bot_data = bot_data
         self.initial_message = initial_message
         self.clients: dict[str, LLMClient] = {}
         self.logger = SimpleDebugLogger("ResponseLogger")
+        self.chatroom = chatroom
 
         for provider_name, provider_data in bot_data.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
     async def _get_usable_message_history_before(self, message: discord.Message) -> MessageSnapshotHistory:
         USABLE_HISTORY_LENGTH = self.bot_data.profile.options.recent_message_history_length
-        usable_history = await self.bot_data.recent_history.get_finalized_message_history()
+        usable_history = await self.chatroom.message_history.get_finalized_message_history()
         last_n_messages = [msg for msg in usable_history._memory][-USABLE_HISTORY_LENGTH:]
         last_n_messages.append(await MessageSnapshot.of_discord_message(message))
         return MessageSnapshotHistory(last_n_messages)
@@ -195,8 +200,8 @@ class AIDiscordBotResponder:
             else:
                 full_prompt = full_prompt.plus(Prompt.user_msg(memorized_message.text))
         
-        if self.bot_data.profile.options.enable_image_viewing:
-            full_prompt = full_prompt.plus(Prompt.system_msg(f"(I've viewed the image by user_nick. Description: {attachment_description})"))
+        if self.bot_data.profile.options.enable_image_viewing and attachment_description is not None:
+            full_prompt = full_prompt.plus(Prompt.system_msg(f"(I've viewed the image by {user_nick}. Description: {attachment_description})"))
 
         now_str = datetime.datetime.now().strftime("%B %d, %H:%M:%S")
 

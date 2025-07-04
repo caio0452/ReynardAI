@@ -1,0 +1,140 @@
+import abc
+import io
+import traceback
+
+from typing import Any
+from ..chat.chatroom import Chatroom
+from ..events.event_bus import AsyncEventBus
+from .message_snapshot import MessageSnapshot
+from ..util.rate_limits import RateLimiter, RateLimit
+from ..events.message_events import MessageSnapshotEvent
+from ..chat.message_history import SynchronizedMessageHistory
+from ..bot_workflow.ai_responder import CustomBotData, AIResponder
+from ..bot_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
+
+class BaseChatHandler(abc.ABC):
+    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot_data: CustomBotData):
+        self.rate_limiter = RateLimiter(
+            RateLimit(n_messages=3, seconds=10),
+            RateLimit(n_messages=10, seconds=60),
+            RateLimit(n_messages=35, seconds=5 * 60),
+            RateLimit(n_messages=100, seconds=2 * 3600),
+            RateLimit(n_messages=250, seconds=8 * 3600)
+        )
+        self.chatroom = Chatroom(SynchronizedMessageHistory(), 0)
+        self.ai_bot = ai_bot_data
+        self.logger = SimpleDebugLogger(f"{self.__class__.__name__}Logger")
+        bus.subscribe(self.on_message_received)
+
+    async def on_message_received(self, event: MessageSnapshotEvent) -> None:
+        snapshot = event.snapshot
+        if self._is_bot_message(event):
+            return
+        if not self._is_message_for_bot(event):
+            return
+
+        self.rate_limiter.register_request(snapshot.sender_id)
+        if self.rate_limiter.is_rate_limited(snapshot.sender_id):
+            await self._send_rate_limit_warning(event)
+            return
+
+        verbose = snapshot.text.endswith("--v")
+        logs = snapshot.text.endswith("--l")
+        if logs:
+            await self.handle_log_request(snapshot.text, event)
+        else:
+            await self.respond_with_llm(event, verbose=verbose)
+
+    async def respond_with_llm(self, event: MessageSnapshotEvent, *, verbose: bool = False):
+        user_snapshot = event.snapshot
+        await self.memorize_message(user_snapshot, pending=True, add_after_id=None)
+        
+        typing_context = await self._send_typing_indicator(event)
+
+        try:
+            responder = AIResponder(self.ai_bot, self.chatroom, event.snapshot, verbose=verbose)
+            resp = await responder.create_response()
+            sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
+            await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
+            await self.ai_bot.recent_history.mark_finalized(user_snapshot.message_id)
+            ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
+
+        except Exception as e:
+            await self.handle_error(event, e)
+
+    async def handle_log_request(self, content: str, original_event: MessageSnapshotEvent):
+        try:
+            num = None
+            for num_str in content.split(" "):
+                if num_str.isdigit():
+                    num = int(num_str)
+                    break
+
+            if num is None:
+                return await self._send_reply("❌ No numerical message ID found", original_event)
+
+            log_data = ResponseLogsManager.instance().get_log_by_id(num)
+            if log_data is None:
+                return await self._send_reply(f"❌ No log with ID `{num}` found", original_event)
+
+            await self._send_file_reply(
+                content=f"Verbose logs for message ID {num} attached (only last 10 are stored)",
+                file_data=log_data.encode('utf-8'),
+                filename="verbose_log.txt",
+                original_event=original_event
+            )
+        except ValueError:
+            invalid_log_msg = self.ai_bot.profile.lang["invalid_log_request"].format(content)
+            await self._send_reply(invalid_log_msg, original_event)
+
+    async def handle_error(self, event: MessageSnapshotEvent, error: Exception):
+        await self.forget_message(event.snapshot)
+        error_msg = f"There was an error: ```{str(error)[:1000]}```"
+        await self._send_reply(error_msg, event)
+        traceback.print_exc()
+
+    async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
+        if add_after_id is None:
+            await self.ai_bot.recent_history.add(
+                message,
+                pending=pending
+            )
+        else:
+             await self.ai_bot.recent_history.add_after(
+                add_after_id,
+                message,
+                pending=pending
+            )
+        if self.ai_bot.long_term_memory is not None:
+            await self.ai_bot.long_term_memory.memorize(message)
+
+    async def forget_message(self, message: MessageSnapshot) -> None:
+        await self.ai_bot.recent_history.remove(message.message_id)
+
+    @abc.abstractmethod
+    def _is_bot_message(self, event: MessageSnapshotEvent) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def _is_message_for_bot(self, event: MessageSnapshotEvent) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def _send_rate_limit_warning(self, event: MessageSnapshotEvent) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def _send_typing_indicator(self, event: MessageSnapshotEvent) -> Any:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def _send_response(self, text: str, original_event: MessageSnapshotEvent, typing_placeholder: Any | None, attachments: list[io.BytesIO] = []) -> MessageSnapshot:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    async def _send_reply(self, text: str, original_event: MessageSnapshotEvent) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def _send_file_reply(self, content: str, file_data: bytes, filename: str, original_event: MessageSnapshotEvent) -> None:
+        raise NotImplementedError()

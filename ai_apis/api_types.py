@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field
 OpenAIMessage = dict[str, list | str | dict]
 
 class Prompt(BaseModel, frozen=True):
-    messages: list[OpenAIMessage] = Field(...)
+    messages: tuple[OpenAIMessage, ...] = Field(...)
 
     @staticmethod
     def system_msg(content: str) -> OpenAIMessage:
         return {"role": "system", "content": content}
 
     def plus(self, message: OpenAIMessage):
-        return Prompt(messages=self.messages + [message])
+        return Prompt(messages=self.messages + (message,))
 
     @staticmethod
     def user_msg(content: str, image_url: str | None = None) -> OpenAIMessage:
@@ -66,9 +66,9 @@ class Prompt(BaseModel, frozen=True):
                 modified_message = replace_all_in_dict(modified_message, formatted_placeholder, replacement)
             modified_messages.append(modified_message)
 
-        return Prompt(messages=modified_messages)
+        return Prompt(messages=tuple(modified_messages))
 
-    def to_openai_format(self) -> list[OpenAIMessage]:
+    def to_openai_format(self) -> tuple[OpenAIMessage]:
         return self.messages
 
 class LLMRequestParams(BaseModel, frozen=True):

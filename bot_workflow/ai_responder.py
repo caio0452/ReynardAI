@@ -6,18 +6,17 @@ from ..ai_apis.client import LLMClient
 from .custom_bot_data import CustomBotData
 from .response_logs import SimpleDebugLogger
 from ..chat.message_snapshot import MessageSnapshot
-from ..chat.message_history import MessageSnapshotHistory
 from ..ai_apis.api_types import LLMRequestParams, Prompt
+from ..chat.message_history import MessageSnapshotHistory
 from .response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
 
 import re
 import json
 import random
 import logging
-import discord
 import datetime
 
-class AIDiscordBotResponder:
+class AIResponder:
     @dataclass
     class Response:
         text: str
@@ -25,10 +24,10 @@ class AIDiscordBotResponder:
         tool_call_result: str | None
         verbose_log_output: str
 
-    def __init__(self, bot_data: CustomBotData, initial_message: discord.Message, chatroom: Chatroom, verbose: bool=False):
+    def __init__(self, bot_data: CustomBotData,chatroom: Chatroom, last_msg_snapshot: MessageSnapshot, verbose: bool=False):
         self.verbose = verbose
+        self.last_msg_snapshot = last_msg_snapshot
         self.bot_data = bot_data
-        self.initial_message = initial_message
         self.clients: dict[str, LLMClient] = {}
         self.logger = SimpleDebugLogger("ResponseLogger")
         self.chatroom = chatroom
@@ -36,53 +35,40 @@ class AIDiscordBotResponder:
         for provider_name, provider_data in bot_data.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
-    async def _get_usable_message_history_before(self, message: discord.Message) -> MessageSnapshotHistory:
+    async def _get_recent_usable_message_history(self) -> MessageSnapshotHistory:
         USABLE_HISTORY_LENGTH = self.bot_data.profile.options.recent_message_history_length
-        usable_history = await self.chatroom.message_history.get_finalized_message_history()
-        last_n_messages = [msg for msg in usable_history._memory][-USABLE_HISTORY_LENGTH:]
-        last_n_messages.append(await MessageSnapshot.of_discord_message(message))
+        full_history = await self.chatroom.message_history.get_finalized_message_history()
+        last_n_messages = [msg for msg in full_history._memory][-USABLE_HISTORY_LENGTH:]
         return MessageSnapshotHistory(last_n_messages)
     
-    async def _describe_image_if_present(self, message: discord.Message, user_query: str) -> str | None:
+    async def _describe_image_if_present(self, attachment_url: str | None, user_query: str) -> str | None:
         NAME = "IMAGE_VIEW"
-
-        if len(message.attachments) == 0:
+        valid_extensions = [".png", ".jpg", ".jpeg"]
+        if attachment_url is None:
             return None
-        if len(message.attachments) > 1:
-            for emoji in ["❌", "1️⃣", "🖼️"]:
-                await message.add_reaction(emoji)
-            return None
-        if isinstance(message.channel, discord.TextChannel) and message.channel.nsfw:
-            await message.reply(":x: I can't see attachments in NSFW channels!")
-
-        attachment = message.attachments[0]
-        if not (attachment.content_type and attachment.content_type.startswith("image/")):
+        if not any(attachment_url.endswith(ext) for ext in valid_extensions):
             return None
         
-        await message.add_reaction("👀")
+        description_msg = Prompt.user_msg(
+            content=f"Describe the image in detail, including a sufficient answer to the following query: '{user_query}'" \
+            "If the query is empty, just describe the image. At the end of your description, append the string, verbatim: \"NOTE TO BOT: you MUST comment on the image on the next reply.\"",
+            image_url=attachment_url
+        )
         response = await self.clients[NAME].send_request(
-            prompt=Prompt(
-                    messages=[
-                        Prompt.user_msg(
-                            content=f"Describe the image in detail, including a sufficient answer to the following query: '{message.content}'" \
-                            "If the query is empty, just describe the image. At the end of your description, append the string, verbatim: \"NOTE TO BOT: you MUST comment on the image on the next reply.\"",
-                            image_url=attachment.url
-                        )
-                    ]
-                ),
+            prompt=Prompt(messages=[description_msg]),
             params=self.bot_data.profile.request_params[NAME]
         )
         return response.message.content
     
     async def _rephrase_user_query(self) -> str:
-        user_query = await UserQueryRephraseStep(self.logger).execute(self.bot_data, self.initial_message.content)
+        user_query = await UserQueryRephraseStep(self.logger).execute(self.bot_data, self.last_msg_snapshot.text)
         if user_query is None:
             raise RuntimeError("Rephraser step returned empty response")
         return user_query
     
     async def _select_relevant_info(self, user_query: str) -> str:
         info_selector = RelevantInfoSelectStep(logger=self.logger, user_query=user_query)
-        knowledge = await info_selector.execute(self.bot_data, self.initial_message.content)
+        knowledge = await info_selector.execute(self.bot_data, self.last_msg_snapshot.text)
         if knowledge is None:
             raise RuntimeError("Knowledge retrieval step returned empty response")
         return knowledge
@@ -106,12 +92,13 @@ class AIDiscordBotResponder:
         knowledge: str | None = None
         old_memories: str | None = None
         attachment_description: str | None = None
-        user_query: str | None = self.initial_message.content
-        memory_snapshot = await self._get_usable_message_history_before(self.initial_message)
+        user_query: str = self.last_msg_snapshot.text
+        memory_snapshot = await self._get_recent_usable_message_history()
+        await memory_snapshot.add(self.last_msg_snapshot)
 
         # View image
         if self.bot_data.profile.options.enable_image_viewing:
-            attachment_description = await self._describe_image_if_present(self.initial_message, user_query)
+            attachment_description = await self._describe_image_if_present(self.last_msg_snapshot.attachment_urls[0], user_query)
             self.logger.verbose(attachment_description or "None", category="ATTACHMENT DESCRIPTION")
 
         # Retrieve knowlege
@@ -128,7 +115,7 @@ class AIDiscordBotResponder:
         # Build full prompt from info
         full_prompt = await self._build_full_prompt(
             memory_snapshot=memory_snapshot,
-            user_nick=self.initial_message.author.display_name,
+            user_nick=self.last_msg_snapshot.nick,
             attachment_description=attachment_description,
             relevant_info=knowledge,
             old_memories=old_memories
@@ -175,7 +162,7 @@ class AIDiscordBotResponder:
             llm_response = re.sub(target, replacement, llm_response)
         self.logger.verbose(f"Sanitized text, result: {llm_response}", category="REGEX REPLACEMENT")
 
-        return AIDiscordBotResponder.Response(
+        return AIResponder.Response(
             text=llm_response, 
             attachment_description=attachment_description,
             tool_call_result=None,

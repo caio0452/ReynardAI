@@ -25,6 +25,5 @@ class CustomBotData(AIBotData):
         self.provider_store = provider_store
         self.discord_bot_id = discord_bot_id # TODO: tight coupling
         self.long_term_memory = long_term_memory
-        self.recent_history = SynchronizedMessageHistory()
+        self.full_history = SynchronizedMessageHistory()
         self.knowledge = knowledge 
-        self.RECENT_MEMORY_LENGTH = profile.options.recent_message_history_length

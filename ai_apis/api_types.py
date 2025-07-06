@@ -68,7 +68,7 @@ class Prompt(BaseModel, frozen=True):
 
         return Prompt(messages=tuple(modified_messages))
 
-    def to_openai_format(self) -> tuple[OpenAIMessage]:
+    def to_openai_format(self) -> tuple[OpenAIMessage, ...]:
         return self.messages
 
 class LLMRequestParams(BaseModel, frozen=True):

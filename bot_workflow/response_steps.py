@@ -39,8 +39,8 @@ class ResponseStep(ABC):
 class PersonalityRewriteStep(ResponseStep):
     async def _run(self):
         NAME = "PERSONALITY_REWRITE"
-        name_prompt = self.bot_data.profile.get_prompt(NAME)
-        prompt = name_prompt.replace({
+        rewriter_prompt = self.bot_data.profile.get_prompt(NAME)
+        prompt = rewriter_prompt.replace({
             "message": self.message
         })
         response = await self._llm_request(
@@ -56,7 +56,7 @@ class PersonalityRewriteStep(ResponseStep):
 class UserQueryRephraseStep(ResponseStep):
     async def _run(self):
         NAME = "USER_QUERY_REPHRASE"
-        recent_history_list = self.bot_data.recent_history.backing_history.as_list()
+        recent_history_list = self.bot_data.full_history.backing_history.as_list()
         user_prompt_str = "\n".join(
             [memorized_message.text for memorized_message in recent_history_list]
         )
@@ -74,6 +74,27 @@ class UserQueryRephraseStep(ResponseStep):
     
     def get_name(self) -> str | None:
         return "query rephraser"
+    
+class HistorySummarizerStep(ResponseStep):
+    async def _run(self):
+        NAME = "HISTORY_SUMMARIZE"
+        medium_term_memory_len = self.bot_data.profile.memory_settings.medium_term_history_length
+        msgs_to_summarize = self.bot_data.full_history.backing_history.as_list()[-medium_term_memory_len:]
+        msgs_to_summarize_str = "\n".join(
+            [memorized_message.text for memorized_message in msgs_to_summarize]
+        )
+        prompt = self.bot_data.profile.get_prompt(NAME).replace({
+            "messages": msgs_to_summarize_str
+        })
+        response = await self._llm_request(
+            name=NAME,
+            prompt=prompt
+        )
+        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
+        return response.message.content
+    
+    def get_name(self) -> str | None:
+        return "history summarizer"
     
 class RelevantInfoSelectStep(ResponseStep):
     def __init__(self, *, logger: SimpleDebugLogger, user_query: str):

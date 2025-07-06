@@ -1,5 +1,4 @@
 import abc
-import io
 import traceback
 
 from typing import Any
@@ -56,7 +55,7 @@ class BaseChatHandler(abc.ABC):
             resp = await responder.create_response()
             sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
             await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
-            await self.ai_bot.recent_history.mark_finalized(user_snapshot.message_id)
+            await self.ai_bot.full_history.mark_finalized(user_snapshot.message_id)
             ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
 
         except Exception as e:
@@ -95,12 +94,12 @@ class BaseChatHandler(abc.ABC):
 
     async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
         if add_after_id is None:
-            await self.ai_bot.recent_history.add(
+            await self.ai_bot.full_history.add(
                 message,
                 pending=pending
             )
         else:
-             await self.ai_bot.recent_history.add_after(
+             await self.ai_bot.full_history.add_after(
                 add_after_id,
                 message,
                 pending=pending
@@ -109,7 +108,7 @@ class BaseChatHandler(abc.ABC):
             await self.ai_bot.long_term_memory.memorize(message)
 
     async def forget_message(self, message: MessageSnapshot) -> None:
-        await self.ai_bot.recent_history.remove(message.message_id)
+        await self.ai_bot.full_history.remove(message.message_id)
 
     @abc.abstractmethod
     def _is_bot_message(self, event: MessageSnapshotEvent) -> bool:
@@ -128,7 +127,7 @@ class BaseChatHandler(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def _send_response(self, text: str, original_event: MessageSnapshotEvent, typing_placeholder: Any | None, attachments: list[io.BytesIO] = []) -> MessageSnapshot:
+    async def _send_response(self, text: str, original_event: MessageSnapshotEvent, typing_placeholder: Any | None) -> MessageSnapshot:
         raise NotImplementedError()
     
     @abc.abstractmethod

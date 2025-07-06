@@ -8,7 +8,7 @@ from .response_logs import SimpleDebugLogger
 from ..chat.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
 from ..chat.message_history import MessageSnapshotHistory
-from .response_steps import PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
+from .response_steps import HistorySummarizerStep, PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
 
 import re
 import json
@@ -36,7 +36,7 @@ class AIResponder:
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
     async def _get_recent_usable_message_history(self) -> MessageSnapshotHistory:
-        USABLE_HISTORY_LENGTH = self.bot_data.profile.options.recent_message_history_length
+        USABLE_HISTORY_LENGTH = self.bot_data.profile.memory_settings.short_term_history_length
         full_history = await self.chatroom.message_history.get_finalized_message_history()
         last_n_messages = [msg for msg in full_history._memory][-USABLE_HISTORY_LENGTH:]
         return MessageSnapshotHistory(last_n_messages)
@@ -55,7 +55,7 @@ class AIResponder:
             image_url=attachment_url
         )
         response = await self.clients[NAME].send_request(
-            prompt=Prompt(messages=[description_msg]),
+            prompt=Prompt(messages=[description_msg]), # type: ignore
             params=self.bot_data.profile.request_params[NAME]
         )
         return response.message.content
@@ -66,6 +66,13 @@ class AIResponder:
             raise RuntimeError("Rephraser step returned empty response")
         return user_query
     
+    async def _get_medium_term_summary(self) -> str:
+        summary =  await HistorySummarizerStep(self.logger).execute(
+            self.bot_data, self.last_msg_snapshot.text) 
+        if summary is None:
+            raise RuntimeError("History summarizer step returned empty response")
+        return summary
+        
     async def _select_relevant_info(self, user_query: str) -> str:
         info_selector = RelevantInfoSelectStep(logger=self.logger, user_query=user_query)
         knowledge = await info_selector.execute(self.bot_data, self.last_msg_snapshot.text)
@@ -91,12 +98,14 @@ class AIResponder:
         MAIN_CLIENT_NAME = "PERSONALITY"
         knowledge: str | None = None
         old_memories: str | None = None
+        medium_term_summary: str | None = None
         attachment_description: str | None = None
         user_query: str = self.last_msg_snapshot.text
         memory_snapshot = await self._get_recent_usable_message_history()
         await memory_snapshot.add(self.last_msg_snapshot)
 
         # View image
+        # TODO: some of these steps can be parallelized
         if self.bot_data.profile.options.enable_image_viewing:
             attachment_description = await self._describe_image_if_present(self.last_msg_snapshot.attachment_urls[0], user_query)
             self.logger.verbose(attachment_description or "None", category="ATTACHMENT DESCRIPTION")
@@ -108,9 +117,13 @@ class AIResponder:
             self.logger.verbose(knowledge, category="INFO FROM KNOWLEDGE DB")
 
         # Retrieve memories
-        if self.bot_data.profile.options.enable_long_term_memory:
+        if self.bot_data.profile.memory_settings.enable_long_term_memory:
             old_memories = await self._get_old_memories_as_text(user_query)
             self.logger.verbose(old_memories, category="RETRIEVED MEMORIES")
+
+        # Build medium-term memory
+        if self.bot_data.profile.memory_settings.enable_medium_term_memory:
+            medium_term_summary = await self._get_medium_term_summary()
 
         # Build full prompt from info
         full_prompt = await self._build_full_prompt(
@@ -118,7 +131,8 @@ class AIResponder:
             user_nick=self.last_msg_snapshot.nick,
             attachment_description=attachment_description,
             relevant_info=knowledge,
-            old_memories=old_memories
+            old_memories=old_memories,
+            medium_term_summary=medium_term_summary
         )
         self.logger.verbose(json.dumps(full_prompt.messages), category="FULL_PROMPT")
 
@@ -176,7 +190,8 @@ class AIResponder:
             user_nick: str,
             attachment_description: str | None,
             relevant_info: str | None,
-            old_memories: str | None
+            old_memories: str | None,
+            medium_term_summary: str | None
         ) -> Prompt:
         NAME = "PERSONALITY"
         full_prompt: Prompt = self.bot_data.profile.get_prompt(NAME)
@@ -196,5 +211,6 @@ class AIResponder:
             "now": now_str,
             "nick": user_nick or "",
             "knowledge": relevant_info or "",
-            "old_memories": old_memories or ""
+            "old_memories": old_memories or "",
+            "summary": medium_term_summary or "",
         })

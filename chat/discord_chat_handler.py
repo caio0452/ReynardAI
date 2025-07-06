@@ -1,6 +1,5 @@
 import io
 import discord
-import datetime
 from typing import Any
 import message_processing_util
 

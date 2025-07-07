@@ -106,8 +106,9 @@ class AIResponder:
 
         # View image
         # TODO: some of these steps can be parallelized
-        if self.bot_data.profile.options.enable_image_viewing:
-            attachment_description = await self._describe_image_if_present(self.last_msg_snapshot.attachment_urls[0], user_query)
+        attachment_urls = self.last_msg_snapshot.attachment_urls
+        if self.bot_data.profile.options.enable_image_viewing and len(attachment_urls) > 0:
+            attachment_description = await self._describe_image_if_present(attachment_urls[0], user_query)
             self.logger.verbose(attachment_description or "None", category="ATTACHMENT DESCRIPTION")
 
         # Retrieve knowlege

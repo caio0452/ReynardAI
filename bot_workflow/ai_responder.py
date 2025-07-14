@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
-from chat.chatroom import Chatroom
-
+from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .custom_bot_data import CustomBotData
 from .response_logs import SimpleDebugLogger
@@ -13,6 +12,7 @@ from .response_steps import HistorySummarizerStep, PersonalityRewriteStep, Relev
 import re
 import json
 import random
+import asyncio
 import logging
 import datetime
 
@@ -96,35 +96,46 @@ class AIResponder:
         
     async def create_response(self) -> Response:
         MAIN_CLIENT_NAME = "PERSONALITY"
-        knowledge: str | None = None
-        old_memories: str | None = None
-        medium_term_summary: str | None = None
-        attachment_description: str | None = None
         user_query: str = self.last_msg_snapshot.text
         memory_snapshot = await self._get_recent_usable_message_history()
         await memory_snapshot.add(self.last_msg_snapshot)
 
-        # View image
-        # TODO: some of these steps can be parallelized
-        attachment_urls = self.last_msg_snapshot.attachment_urls
-        if self.bot_data.profile.options.enable_image_viewing and len(attachment_urls) > 0:
-            attachment_description = await self._describe_image_if_present(attachment_urls[0], user_query)
-            self.logger.verbose(attachment_description or "None", category="ATTACHMENT DESCRIPTION")
+        # Read attachments
+        attachment_task = None
+        if self.bot_data.profile.options.enable_image_viewing and self.last_msg_snapshot.attachment_urls:
+            attachment_task = asyncio.create_task(
+                self._describe_image_if_present(
+                    self.last_msg_snapshot.attachment_urls[0], 
+                    user_query
+                )
+            )
 
-        # Retrieve knowlege
+        # Gather knowledge
+        knowledge_task = None
         if self.bot_data.profile.options.enable_knowledge_retrieval:
-            user_query = await self._rephrase_user_query()
-            knowledge = await self._select_relevant_info(user_query)
-            self.logger.verbose(knowledge, category="INFO FROM KNOWLEDGE DB")
+            async def _fetch_knowledge():
+                rephrased_query = await self._rephrase_user_query()
+                return await self._select_relevant_info(rephrased_query)
+            knowledge_task = asyncio.create_task(_fetch_knowledge())
 
-        # Retrieve memories
+        # Retrieve old memories
+        old_memories_task = None
         if self.bot_data.profile.memory_settings.enable_long_term_memory:
-            old_memories = await self._get_old_memories_as_text(user_query)
-            self.logger.verbose(old_memories, category="RETRIEVED MEMORIES")
+            old_memories_task = asyncio.create_task(
+                self._get_old_memories_as_text(user_query)
+            )
 
-        # Build medium-term memory
+        # Summarize message history ("medium-term memory")
+        medium_term_task = None
         if self.bot_data.profile.memory_settings.enable_medium_term_memory:
-            medium_term_summary = await self._get_medium_term_summary()
+            medium_term_task = asyncio.create_task(
+                self._get_medium_term_summary()
+            )
+
+        attachment_description = await attachment_task if attachment_task else None
+        knowledge = await knowledge_task if knowledge_task else None
+        old_memories = await old_memories_task if old_memories_task else None
+        medium_term_summary = await medium_term_task if medium_term_task else None
 
         # Build full prompt from info
         full_prompt = await self._build_full_prompt(

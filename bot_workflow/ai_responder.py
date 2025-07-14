@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .custom_bot_data import CustomBotData
@@ -94,8 +93,14 @@ class AIResponder:
             raise RuntimeError("Personality rewrite step returned empty response")
         return personality_rewrite
         
-    async def create_response(self) -> Response:
-        MAIN_CLIENT_NAME = "PERSONALITY"
+    @dataclass
+    class PromptData:
+        attachment_description: str | None
+        knowledge: str | None
+        old_memories: str | None
+        medium_term_summary: str | None
+
+    async def _gather_prompt_data(self)-> PromptData:
         user_query: str = self.last_msg_snapshot.text
         memory_snapshot = await self._get_recent_usable_message_history()
         await memory_snapshot.add(self.last_msg_snapshot)
@@ -110,7 +115,7 @@ class AIResponder:
                 )
             )
 
-        # Gather knowledge
+        # Rephrase then gather knowledge
         knowledge_task = None
         if self.bot_data.profile.options.enable_knowledge_retrieval:
             async def _fetch_knowledge():
@@ -132,19 +137,42 @@ class AIResponder:
                 self._get_medium_term_summary()
             )
 
-        attachment_description = await attachment_task if attachment_task else None
-        knowledge = await knowledge_task if knowledge_task else None
-        old_memories = await old_memories_task if old_memories_task else None
-        medium_term_summary = await medium_term_task if medium_term_task else None
+        # Dispatch all tasks
+        task_dict = {
+            'attachment': attachment_task,
+            'knowledge': knowledge_task,
+            'old_memories': old_memories_task,
+            'medium_term': medium_term_task
+        }
+
+        valid_tasks = {
+            name: task 
+            for name, task in task_dict.items() 
+            if task is not None
+        }
+        results = await asyncio.gather(*valid_tasks.values())
+        result_dict = dict(zip(valid_tasks.keys(), results))
+
+        return AIResponder.PromptData(
+            attachment_description = result_dict.get('attachment'),
+            knowledge = result_dict.get('knowledge'),
+            old_memories = result_dict.get('old_memories'),
+            medium_term_summary = result_dict.get('medium_term')
+        )
+    
+    async def create_response(self) -> Response:
+        MAIN_CLIENT_NAME = "PERSONALITY"
+        prompt_data = await self._gather_prompt_data()
+        memory_snapshot = await self._get_recent_usable_message_history()
 
         # Build full prompt from info
-        full_prompt = await self._build_full_prompt(
+        full_prompt = await self._format_full_prompt(
             memory_snapshot=memory_snapshot,
             user_nick=self.last_msg_snapshot.nick,
-            attachment_description=attachment_description,
-            relevant_info=knowledge,
-            old_memories=old_memories,
-            medium_term_summary=medium_term_summary
+            attachment_description=prompt_data.attachment_description,
+            relevant_info=prompt_data.knowledge,
+            old_memories=prompt_data.old_memories,
+            medium_term_summary=prompt_data.medium_term_summary
         )
         self.logger.verbose(json.dumps(full_prompt.messages), category="FULL_PROMPT")
 
@@ -190,12 +218,13 @@ class AIResponder:
 
         return AIResponder.Response(
             text=llm_response, 
-            attachment_description=attachment_description,
+            attachment_description=prompt_data.attachment_description,
             tool_call_result=None,
             verbose_log_output=self.logger.text
         )
 
-    async def _build_full_prompt(
+
+    async def _format_full_prompt(
             self, 
             *, 
             memory_snapshot: MessageSnapshotHistory, 

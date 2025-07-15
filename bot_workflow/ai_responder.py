@@ -223,7 +223,6 @@ class AIResponder:
             verbose_log_output=self.logger.text
         )
 
-
     async def _format_full_prompt(
             self, 
             *, 

@@ -18,10 +18,14 @@ class MessageSnapshot:
 
     @staticmethod
     async def of_discord_message(message: discord.Message, message_sanitizer = None) -> "MessageSnapshot":
+        attachment_list = []
         if message_sanitizer is not None:
             text = await message_sanitizer(message)
         else:
             text = message.content
+
+        if message.attachments:
+            attachment_list = [att.url for att in message.attachments]
 
         return MessageSnapshot(
             text=f"[{message.created_at.strftime('%d/%m %H:%M:%S')} by {message.author.display_name}] {text}",
@@ -29,5 +33,6 @@ class MessageSnapshot:
             sent=message.created_at,
             is_bot=message.author.bot,
             sender_id=message.author.id,
-            message_id=message.id
+            message_id=message.id,
+            attachment_urls=attachment_list
         )

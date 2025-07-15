@@ -1,8 +1,8 @@
 import io
 import discord
 from typing import Any
-import message_processing_util
 
+from . import message_processing_util
 from .message_snapshot import MessageSnapshot
 from .base_chat_handler import BaseChatHandler
 from ..events.message_events import MessageSnapshotEvent

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, Generic, TypeVar
 from collections.abc import Awaitable, Callable
 
@@ -19,10 +20,16 @@ class AsyncEventBus(Generic[T]):
     async def _dispatcher(self) -> None:
         while True:
             item = await self._queue.get()
-            await asyncio.gather(
-                *(handler(item) for handler in list(self._subscribers)),
-                return_exceptions=True,
-            )
+            for handler in self._subscribers:
+                asyncio.create_task(self._run_handler(handler, item))
+
+    async def _run_handler(self, handler: Callable[[T], Awaitable[Any]], item: T) -> None:
+        handler_name = handler.__name__
+        try:
+            await handler(item)
+        except Exception as ex:
+            logging.error(f"Handler '{handler_name}' failed for '{item}'")
+            logging.exception(ex)
 
     def start(self) -> None:
         if self._dispatcher_task is None:

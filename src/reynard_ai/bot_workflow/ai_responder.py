@@ -174,7 +174,7 @@ class AIResponder:
             old_memories=prompt_data.old_memories,
             medium_term_summary=prompt_data.medium_term_summary
         )
-        self.logger.verbose(json.dumps(full_prompt.messages), category="FULL_PROMPT")
+        self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
 
         # Formulate responses w/ full prompt
         main_client_params = self.bot_data.profile.request_params[MAIN_CLIENT_NAME]
@@ -188,7 +188,7 @@ class AIResponder:
                 max_tokens=main_client_params.max_tokens,
                 logit_bias=main_client_params.logit_bias
             )
-            self.logger.verbose(f"Sending request to model name '{name}' with parameters {modified_params.model_dump_json()}", category="REQUEST")
+            self.logger.verbose(f"Sending request to model name '{name}' with parameters {modified_params.model_dump_json(indent=4)}", category="REQUEST")
             try:
                 raw_response = await self.clients[MAIN_CLIENT_NAME].send_request(
                     prompt=full_prompt,

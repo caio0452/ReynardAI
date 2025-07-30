@@ -8,7 +8,7 @@ import logging
 
 from ..ai_apis.providers import ProviderData
 from ..chat.message_snapshot import MessageSnapshot
-from ..bot_workflow.vector_db import VectorDatabase, VectorDatabaseConnection
+from ..bot_data.vector_db import VectorDatabase, VectorDatabaseConnection
 
 class LongTermMemoryIndex:
     def __init__(self, _db_conn: VectorDatabaseConnection): 

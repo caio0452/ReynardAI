@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+
+from ..bot_data.ai_bot import AIBot
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
-from .custom_bot_data import CustomBotData
 from .response_logs import SimpleDebugLogger
 from ..chat.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
@@ -23,19 +24,19 @@ class AIResponder:
         tool_call_result: str | None
         verbose_log_output: str
 
-    def __init__(self, bot_data: CustomBotData,chatroom: Chatroom, last_msg_snapshot: MessageSnapshot, verbose: bool=False):
+    def __init__(self, ai_bot: AIBot, chatroom: Chatroom, last_msg_snapshot: MessageSnapshot, verbose: bool=False):
         self.verbose = verbose
         self.last_msg_snapshot = last_msg_snapshot
-        self.bot_data = bot_data
+        self.ai_bot = ai_bot
         self.clients: dict[str, LLMClient] = {}
         self.logger = SimpleDebugLogger("ResponseLogger")
         self.chatroom = chatroom
 
-        for provider_name, provider_data in bot_data.provider_store.providers.items():
+        for provider_name, provider_data in ai_bot.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
     async def _get_recent_usable_message_history(self) -> MessageSnapshotHistory:
-        USABLE_HISTORY_LENGTH = self.bot_data.profile.memory_settings.short_term_history_length
+        USABLE_HISTORY_LENGTH = self.ai_bot.profile.memory_settings.short_term_history_length
         full_history = await self.chatroom.message_history.get_finalized_message_history()
         last_n_messages = [msg for msg in full_history._memory][-USABLE_HISTORY_LENGTH:]
         return MessageSnapshotHistory(last_n_messages)
@@ -55,40 +56,40 @@ class AIResponder:
         )
         response = await self.clients[NAME].send_request(
             prompt=Prompt(messages=[description_msg]), # type: ignore
-            params=self.bot_data.profile.request_params[NAME]
+            params=self.ai_bot.profile.request_params[NAME]
         )
         return response.message.content
     
     async def _rephrase_user_query(self) -> str:
-        user_query = await UserQueryRephraseStep(self.logger).execute(self.bot_data, self.last_msg_snapshot.text)
+        user_query = await UserQueryRephraseStep(self.logger).execute(self.ai_bot, self.last_msg_snapshot.text)
         if user_query is None:
             raise RuntimeError("Rephraser step returned empty response")
         return user_query
     
     async def _get_medium_term_summary(self) -> str:
         summary =  await HistorySummarizerStep(self.logger).execute(
-            self.bot_data, self.last_msg_snapshot.text) 
+            self.ai_bot, self.last_msg_snapshot.text) 
         if summary is None:
             raise RuntimeError("History summarizer step returned empty response")
         return summary
         
     async def _select_relevant_info(self, user_query: str) -> str:
         info_selector = RelevantInfoSelectStep(logger=self.logger, user_query=user_query)
-        knowledge = await info_selector.execute(self.bot_data, self.last_msg_snapshot.text)
+        knowledge = await info_selector.execute(self.ai_bot, self.last_msg_snapshot.text)
         if knowledge is None:
             raise RuntimeError("Knowledge retrieval step returned empty response")
         return knowledge
 
     async def _get_old_memories_as_text(self, user_query: str) -> str:
         old_memories = ""
-        if self.bot_data.long_term_memory is not None:
-            for hit in await self.bot_data.long_term_memory.get_closest_messages(user_query):
+        if self.ai_bot.long_term_memory is not None:
+            for hit in await self.ai_bot.long_term_memory.get_closest_messages(user_query):
                 old_memories += hit.entity["text"] + "\n"
         return old_memories
     
     async def _personality_rewrite(self, llm_response: str) -> str:
         personality_rewriter = PersonalityRewriteStep(self.logger)
-        personality_rewrite = await personality_rewriter.execute(self.bot_data, llm_response) 
+        personality_rewrite = await personality_rewriter.execute(self.ai_bot, llm_response) 
         if personality_rewrite is None:
             raise RuntimeError("Personality rewrite step returned empty response")
         return personality_rewrite
@@ -107,7 +108,7 @@ class AIResponder:
 
         # Read attachments
         attachment_task = None
-        if self.bot_data.profile.options.enable_image_viewing and self.last_msg_snapshot.attachment_urls:
+        if self.ai_bot.profile.options.enable_image_viewing and self.last_msg_snapshot.attachment_urls:
             attachment_task = asyncio.create_task(
                 self._describe_image_if_present(
                     self.last_msg_snapshot.attachment_urls[0], 
@@ -117,7 +118,7 @@ class AIResponder:
 
         # Rephrase then gather knowledge
         knowledge_task = None
-        if self.bot_data.profile.options.enable_knowledge_retrieval:
+        if self.ai_bot.profile.options.enable_knowledge_retrieval:
             async def _fetch_knowledge():
                 rephrased_query = await self._rephrase_user_query()
                 return await self._select_relevant_info(rephrased_query)
@@ -125,14 +126,14 @@ class AIResponder:
 
         # Retrieve old memories
         old_memories_task = None
-        if self.bot_data.profile.memory_settings.enable_long_term_memory:
+        if self.ai_bot.profile.memory_settings.enable_long_term_memory:
             old_memories_task = asyncio.create_task(
                 self._get_old_memories_as_text(user_query)
             )
 
         # Summarize message history ("medium-term memory")
         medium_term_task = None
-        if self.bot_data.profile.memory_settings.enable_medium_term_memory:
+        if self.ai_bot.profile.memory_settings.enable_medium_term_memory:
             medium_term_task = asyncio.create_task(
                 self._get_medium_term_summary()
             )
@@ -177,8 +178,8 @@ class AIResponder:
         self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
 
         # Formulate responses w/ full prompt
-        main_client_params = self.bot_data.profile.request_params[MAIN_CLIENT_NAME]
-        model_names_order = [main_client_params.model_name] + self.bot_data.profile.options.llm_fallbacks
+        main_client_params = self.ai_bot.profile.request_params[MAIN_CLIENT_NAME]
+        model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
         llm_response = None
         for name in model_names_order:
             modified_params = main_client_params.model_copy(deep=True)
@@ -204,11 +205,11 @@ class AIResponder:
             raise RuntimeError("Cannot generate response and all fallbacks failed")
         
         # Rewrite in-character
-        if self.bot_data.profile.options.enable_personality_rewrite:
+        if self.ai_bot.profile.options.enable_personality_rewrite:
             llm_response = await self._personality_rewrite(llm_response)
         
         # Replace undesirable text
-        for target, replacement_obj in self.bot_data.profile.regex_replacements.items():
+        for target, replacement_obj in self.ai_bot.profile.regex_replacements.items():
             if isinstance(replacement_obj, list):
                 replacement = random.choice(replacement_obj)
             else:
@@ -234,7 +235,7 @@ class AIResponder:
             medium_term_summary: str | None
         ) -> Prompt:
         NAME = "PERSONALITY"
-        full_prompt: Prompt = self.bot_data.profile.get_prompt(NAME)
+        full_prompt: Prompt = self.ai_bot.profile.get_prompt(NAME)
 
         for memorized_message in memory_snapshot.as_list():
             if memorized_message.is_bot:
@@ -242,7 +243,7 @@ class AIResponder:
             else:
                 full_prompt = full_prompt.plus(Prompt.user_msg(memorized_message.text))
         
-        if self.bot_data.profile.options.enable_image_viewing and attachment_description is not None:
+        if self.ai_bot.profile.options.enable_image_viewing and attachment_description is not None:
             full_prompt = full_prompt.plus(Prompt.system_msg(f"(I've viewed the image by {user_nick}. Description: {attachment_description})"))
 
         now_str = datetime.datetime.now().strftime("%B %d, %H:%M:%S")

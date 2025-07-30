@@ -50,8 +50,8 @@ class MessageSnapshotHistory:
         return ret
 
 class SynchronizedMessageHistory:
-    def __init__(self, history: MessageSnapshotHistory = MessageSnapshotHistory()):
-        self.backing_history = history
+    def __init__(self, *, max_length: int, initial_history: MessageSnapshotHistory = MessageSnapshotHistory()):
+        self.backing_history = initial_history
         self._pending_message_ids: set[int] = set()
         self._lock = asyncio.Lock()
 

@@ -2,17 +2,16 @@ import abc
 import traceback
 
 from typing import Any
-from ..chat.chatroom import Chatroom
+from ..bot_data.ai_bot import AIBot
 from ..events.event_bus import AsyncEventBus
 from .message_snapshot import MessageSnapshot
 from ..util.rate_limits import RateLimiter, RateLimit
 from ..events.message_events import MessageSnapshotEvent
-from ..chat.message_history import SynchronizedMessageHistory
-from ..bot_workflow.ai_responder import CustomBotData, AIResponder
-from ..bot_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
+from ..ai_workflow.ai_responder import AIResponder
+from ..ai_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
 
 class BaseChatHandler(abc.ABC):
-    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot_data: CustomBotData):
+    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot: AIBot):
         self.rate_limiter = RateLimiter(
             RateLimit(n_messages=3, seconds=10),
             RateLimit(n_messages=10, seconds=60),
@@ -20,8 +19,7 @@ class BaseChatHandler(abc.ABC):
             RateLimit(n_messages=100, seconds=2 * 3600),
             RateLimit(n_messages=250, seconds=8 * 3600)
         )
-        self.chatroom = Chatroom(SynchronizedMessageHistory(), 0)
-        self.ai_bot = ai_bot_data
+        self.ai_bot = ai_bot
         self.logger = SimpleDebugLogger(f"{self.__class__.__name__}Logger")
         bus.subscribe(self.on_message_received)
 
@@ -51,11 +49,13 @@ class BaseChatHandler(abc.ABC):
         typing_context = await self._send_typing_indicator(event)
 
         try:
-            responder = AIResponder(self.ai_bot, self.chatroom, event.snapshot, verbose=verbose)
+            responder = AIResponder(self.ai_bot, event.chatroom, event.snapshot, verbose=verbose)
             resp = await responder.create_response()
             sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
             await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
-            await self.ai_bot.full_history.mark_finalized(user_snapshot.message_id)
+            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
+            if self.ai_bot.medium_term_memory is not None:
+                await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
             ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
 
         except Exception as e:
@@ -94,21 +94,29 @@ class BaseChatHandler(abc.ABC):
 
     async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
         if add_after_id is None:
-            await self.ai_bot.full_history.add(
+            await self.ai_bot.short_term_memory.add(
                 message,
                 pending=pending
             )
+            if self.ai_bot.medium_term_memory is not None:
+                await self.ai_bot.medium_term_memory.add(
+                    message,
+                    pending=pending
+                )
         else:
-             await self.ai_bot.full_history.add_after(
-                add_after_id,
-                message,
-                pending=pending
-            )
+             if self.ai_bot.medium_term_memory is not None:
+                await self.ai_bot.medium_term_memory.add_after(
+                    add_after_id,
+                    message,
+                    pending=pending
+                )
         if self.ai_bot.long_term_memory is not None:
             await self.ai_bot.long_term_memory.memorize(message)
 
     async def forget_message(self, message: MessageSnapshot) -> None:
-        await self.ai_bot.full_history.remove(message.message_id)
+        await self.ai_bot.short_term_memory.remove(message.message_id)
+        if self.ai_bot.medium_term_memory is not None:
+            await self.ai_bot.medium_term_memory.remove(message.message_id)
 
     @abc.abstractmethod
     def _is_bot_message(self, event: MessageSnapshotEvent) -> bool:

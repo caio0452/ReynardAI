@@ -1,15 +1,16 @@
 from abc import ABC
+
 from ..ai_apis import providers
-from ..bot_workflow.profile_loader import Profile
-from ..bot_workflow.knowledge import KnowledgeIndex, LongTermMemoryIndex
+from .bot_profile import Profile
+from ..bot_data.knowledge import KnowledgeIndex, LongTermMemoryIndex
 from ..chat.message_history import MessageSnapshotHistory, SynchronizedMessageHistory
 
-class AIBotData(ABC):
+class AbstractAIBot(ABC):
     def __init__(self, name: str, recent_memory: MessageSnapshotHistory | None = None):
         self.name = name
         self.memory = recent_memory
 
-class CustomBotData(AIBotData):
+class AIBot(AbstractAIBot):
     def __init__(self,
                  *,
                  name: str,
@@ -25,5 +26,10 @@ class CustomBotData(AIBotData):
         self.provider_store = provider_store
         self.discord_bot_id = discord_bot_id # TODO: tight coupling
         self.long_term_memory = long_term_memory
-        self.full_history = SynchronizedMessageHistory()
+        self.short_term_memory = SynchronizedMessageHistory(max_length=profile.memory_settings.medium_term_history_length)
+        self.medium_term_memory : SynchronizedMessageHistory | None = None
+        if self.profile.memory_settings.enable_long_term_memory:
+            self.medium_term_memory : SynchronizedMessageHistory | None = SynchronizedMessageHistory(
+                max_length=self.profile.memory_settings.medium_term_history_length
+            )
         self.knowledge = knowledge 

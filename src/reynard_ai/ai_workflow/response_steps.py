@@ -1,9 +1,10 @@
 import time
 
 from ..ai_apis import providers
+from ..bot_data.ai_bot import AIBot
 from abc import ABC, abstractmethod
-from ..bot_workflow.response_logs import SimpleDebugLogger
-from .ai_responder import Prompt, LLMClient, CustomBotData
+from .ai_responder import Prompt, LLMClient
+from ..chat.base_chat_handler import SimpleDebugLogger
 
 class ResponseStep(ABC):
     def __init__(self, logger: SimpleDebugLogger):
@@ -17,8 +18,8 @@ class ResponseStep(ABC):
         client: LLMClient = LLMClient.from_provider(provider)
         return await client.send_request(prompt=prompt, params=params)
     
-    async def execute(self, bot_data: CustomBotData, message: str) -> str | None:
-        self.bot_data: CustomBotData = bot_data
+    async def execute(self, bot_data: AIBot, message: str) -> str | None:
+        self.bot_data: AIBot = bot_data
         self.message = message
         start = time.perf_counter()
         ret = await self._run()
@@ -56,7 +57,7 @@ class PersonalityRewriteStep(ResponseStep):
 class UserQueryRephraseStep(ResponseStep):
     async def _run(self):
         NAME = "USER_QUERY_REPHRASE"
-        recent_history_list = self.bot_data.full_history.backing_history.as_list()
+        recent_history_list = self.bot_data.short_term_memory.backing_history.as_list()
         user_prompt_str = "\n".join(
             [memorized_message.text for memorized_message in recent_history_list]
         )
@@ -79,7 +80,7 @@ class HistorySummarizerStep(ResponseStep):
     async def _run(self):
         NAME = "HISTORY_SUMMARIZE"
         medium_term_memory_len = self.bot_data.profile.memory_settings.medium_term_history_length
-        msgs_to_summarize = self.bot_data.full_history.backing_history.as_list()[-medium_term_memory_len:]
+        msgs_to_summarize = self.bot_data.short_term_memory.backing_history.as_list()[-medium_term_memory_len:]
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )

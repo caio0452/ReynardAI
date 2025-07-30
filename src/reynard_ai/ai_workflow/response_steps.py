@@ -4,7 +4,7 @@ from ..ai_apis import providers
 from ..bot_data.ai_bot import AIBot
 from abc import ABC, abstractmethod
 from .ai_responder import Prompt, LLMClient
-from ..chat.base_chat_handler import SimpleDebugLogger
+from ..ai_workflow.response_logs import SimpleDebugLogger
 
 class ResponseStep(ABC):
     def __init__(self, logger: SimpleDebugLogger):

@@ -1,5 +1,6 @@
 import io
 import discord
+import datetime
 from typing import Any
 
 from . import message_processing_util
@@ -73,4 +74,12 @@ class DiscordChatHandler(BaseChatHandler):
         for chunk in code_balanced_chunks[1:]:
             last_msg = await last_msg.reply(content=chunk, silent=not ping)
 
-        return await MessageSnapshot.of_discord_message(last_msg)
+        return MessageSnapshot(
+            text=text, 
+            nick=self.ai_bot.name, 
+            is_bot=True, 
+            sender_id=self.ai_bot.discord_bot_id, 
+            message_id=last_msg.id, 
+            sent=datetime.datetime.now(), 
+            attachment_urls=[]
+        )

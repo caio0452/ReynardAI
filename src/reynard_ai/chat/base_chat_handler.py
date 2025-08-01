@@ -104,12 +104,18 @@ class BaseChatHandler(abc.ABC):
                     pending=pending
                 )
         else:
-             if self.ai_bot.medium_term_memory is not None:
+            await self.ai_bot.short_term_memory.add_after(
+                add_after_id,
+                message,
+                pending=pending
+            )
+            if self.ai_bot.medium_term_memory is not None:
                 await self.ai_bot.medium_term_memory.add_after(
                     add_after_id,
                     message,
                     pending=pending
                 )
+
         if self.ai_bot.long_term_memory is not None:
             await self.ai_bot.long_term_memory.memorize(message)
 

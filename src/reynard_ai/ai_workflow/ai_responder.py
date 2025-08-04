@@ -97,7 +97,6 @@ class AIResponder:
 
     async def _gather_prompt_data(self)-> PromptData:
         user_query: str = self.last_msg_snapshot.text
-        await self.ai_bot.short_term_memory.add(self.last_msg_snapshot)
 
         # Read attachments
         attachment_task = None

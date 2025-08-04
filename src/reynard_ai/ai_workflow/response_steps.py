@@ -80,7 +80,9 @@ class HistorySummarizerStep(ResponseStep):
     async def _run(self):
         NAME = "HISTORY_SUMMARIZE"
         medium_term_memory_len = self.bot_data.profile.memory_settings.medium_term_history_length
-        msgs_to_summarize = self.bot_data.short_term_memory.backing_history.as_list()[-medium_term_memory_len:]
+        if self.bot_data.medium_term_memory is None:
+            raise RuntimeError("Cannot summarize medium-term memory because this bot has the option disabled")
+        msgs_to_summarize = self.bot_data.medium_term_memory.backing_history.as_list()[-medium_term_memory_len:]
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )

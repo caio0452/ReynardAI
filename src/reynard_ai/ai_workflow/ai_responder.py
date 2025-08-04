@@ -35,12 +35,6 @@ class AIResponder:
         for provider_name, provider_data in ai_bot.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
 
-    async def _get_recent_usable_message_history(self) -> MessageSnapshotHistory:
-        USABLE_HISTORY_LENGTH = self.ai_bot.profile.memory_settings.short_term_history_length
-        full_history = await self.chatroom.message_history.get_finalized_message_history()
-        last_n_messages = [msg for msg in full_history._memory][-USABLE_HISTORY_LENGTH:]
-        return MessageSnapshotHistory(last_n_messages)
-    
     async def _describe_image_if_present(self, attachment_url: str | None, user_query: str) -> str | None:
         NAME = "IMAGE_VIEW"
         valid_extensions = [".png", ".jpg", ".jpeg"]
@@ -103,8 +97,7 @@ class AIResponder:
 
     async def _gather_prompt_data(self)-> PromptData:
         user_query: str = self.last_msg_snapshot.text
-        memory_snapshot = await self._get_recent_usable_message_history()
-        await memory_snapshot.add(self.last_msg_snapshot)
+        await self.ai_bot.short_term_memory.add(self.last_msg_snapshot)
 
         # Read attachments
         attachment_task = None
@@ -164,11 +157,10 @@ class AIResponder:
     async def create_response(self) -> Response:
         MAIN_CLIENT_NAME = "PERSONALITY"
         prompt_data = await self._gather_prompt_data()
-        memory_snapshot = await self._get_recent_usable_message_history()
 
         # Build full prompt from info
         full_prompt = await self._format_full_prompt(
-            memory_snapshot=memory_snapshot,
+            memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
             user_nick=self.last_msg_snapshot.nick,
             attachment_description=prompt_data.attachment_description,
             relevant_info=prompt_data.knowledge,

@@ -66,5 +66,5 @@ class LLMModerator(Moderator):
             return LLMModerator.Result(flagged, category_scores)
         except Exception as ex:
             raise RuntimeError(
-                'Cannot parse moderator result. Must either be a Llama-Guard output or a JSON with format {"flagged": boolean, "harmcategory1": float, "harmcategory2": float...}'
+                'Cannot parse moderator result. Must either be a Llama-Guard output or a JSON with format {"flagged": boolean, "harmcategory1": float, "harmcategory2": float...}, instead got: ' + msg
             ) from ex

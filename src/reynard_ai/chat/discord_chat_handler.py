@@ -22,7 +22,7 @@ class DiscordChatHandler(BaseChatHandler):
     def _is_message_for_bot(self, event: MessageSnapshotEvent) -> bool:
         message = self._get_discord_msg(event)
         mention_ids = [user.id for user in message.mentions]
-        return self.ai_bot.discord_bot_id in mention_ids
+        return self.ai_bot.account_id in mention_ids
 
     async def _send_rate_limit_warning(self, event: MessageSnapshotEvent) -> None:
         message = self._get_discord_msg(event)
@@ -78,7 +78,7 @@ class DiscordChatHandler(BaseChatHandler):
             text=text, 
             nick=self.ai_bot.name, 
             is_bot=True, 
-            sender_id=self.ai_bot.discord_bot_id, 
+            sender_id=self.ai_bot.account_id, 
             message_id=last_msg.id, 
             sent=datetime.datetime.now(), 
             attachment_urls=[]

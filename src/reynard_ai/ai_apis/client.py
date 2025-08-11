@@ -83,7 +83,7 @@ class LLMClient:
 
     async def send_request(self, *, prompt: Prompt, params: LLMRequestParams):
         raw_response = await self.client.chat.completions.create(
-            messages=prompt.to_openai_format(),
+            messages=prompt.to_openai_format(), # type: ignore
             model=params.model_name,
             max_tokens=params.max_tokens,
             temperature=params.temperature,

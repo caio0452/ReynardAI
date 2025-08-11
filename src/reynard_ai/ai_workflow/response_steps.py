@@ -1,9 +1,7 @@
 import time
 
-from ..ai_apis import providers
 from ..bot_data.ai_bot import AIBot
 from abc import ABC, abstractmethod
-from .ai_responder import Prompt, LLMClient
 from ..ai_workflow.response_logs import SimpleDebugLogger
 
 class ResponseStep(ABC):
@@ -11,12 +9,6 @@ class ResponseStep(ABC):
         self.finished = False
         self.elapsed_ms: float | None = None
         self.logger = logger
-
-    async def _llm_request(self, *, name: str, prompt: Prompt):
-        params = self.bot_data.profile.request_params[name]
-        provider: providers.ProviderData = self.bot_data.profile.providers[name]
-        client: LLMClient = LLMClient.from_provider(provider)
-        return await client.send_request(prompt=prompt, params=params)
     
     async def execute(self, bot_data: AIBot, message: str) -> str | None:
         self.bot_data: AIBot = bot_data
@@ -29,6 +21,13 @@ class ResponseStep(ABC):
         self.logger.verbose(f"Finished {self.get_name()} step in {self.elapsed_ms} ms", category="STEP FINISHED")
         return ret
 
+    def _get_prompt(self, name: str):
+        if name not in self.bot_data.profile.prompts:
+            available_prompts = ", ".join(p for p in self.bot_data.profile.prompts.keys())
+            raise ValueError(f"Failed to fetch required prompt {name}, it doesn't exist. Available prompts: {available_prompts}")
+        else:
+            return self.bot_data.profile.prompts[name]
+
     @abstractmethod
     async def _run(self) -> str | None:
         raise NotImplementedError("_run() for ResponseStep")
@@ -40,14 +39,15 @@ class ResponseStep(ABC):
 class PersonalityRewriteStep(ResponseStep):
     async def _run(self):
         NAME = "PERSONALITY_REWRITE"
-        rewriter_prompt = self.bot_data.profile.get_prompt(NAME)
+        rewriter_prompt = self._get_prompt(NAME)
         prompt = rewriter_prompt.replace({
             "message": self.message
         })
-        response = await self._llm_request(
-            name=NAME,
-            prompt=prompt
-        ) 
+        response = await self.bot_data.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
+        )
         self.logger.verbose(f"Prompt: {prompt}\nResposne: {response}", category=NAME) 
         return response.message.content
     
@@ -62,13 +62,14 @@ class UserQueryRephraseStep(ResponseStep):
             [memorized_message.text for memorized_message in recent_history_list]
         )
         last_user = recent_history_list[-1].nick
-        prompt = self.bot_data.profile.get_prompt(NAME).replace({
+        prompt = self._get_prompt(NAME).replace({
             "user_query": user_prompt_str, 
             "last_user": last_user
         })
-        response = await self._llm_request(
-            name=NAME,
-            prompt=prompt
+        response = await self.bot_data.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
         )
         self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
         return response.message.content
@@ -86,12 +87,13 @@ class HistorySummarizerStep(ResponseStep):
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )
-        prompt = self.bot_data.profile.get_prompt(NAME).replace({
+        prompt = self.bot_data.profile.prompts[NAME].replace({
             "messages": msgs_to_summarize_str
         })
-        response = await self._llm_request(
-            name=NAME,
-            prompt=prompt
+        response = await self.bot_data.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
         )
         self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
         return response.message.content
@@ -116,14 +118,15 @@ class RelevantInfoSelectStep(ResponseStep):
             for hit in hits:
                 available_info += hit["text"] + "\n"
 
-        prompt = self.bot_data.profile.get_prompt(NAME) \
+        prompt = self._get_prompt(NAME) \
             .replace({
                 "user_query": self.user_query,
                 "available_info": available_info
             })
-        response = await self._llm_request(
-            name=NAME,
-            prompt=prompt
+        response = await self.bot_data.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
         )
         self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
         return response.message.content

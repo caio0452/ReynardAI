@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 
+
 from ..bot_data.ai_bot import AIBot
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .response_logs import SimpleDebugLogger
+from ..ai_workflow.moderation import LLMModerator
 from ..chat.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
 from ..chat.message_history import MessageSnapshotHistory
@@ -31,6 +33,7 @@ class AIResponder:
         self.clients: dict[str, LLMClient] = {}
         self.logger = SimpleDebugLogger("ResponseLogger")
         self.chatroom = chatroom
+        self._moderator = LLMModerator(self.ai_bot.profile)
 
         for provider_name, provider_data in ai_bot.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
@@ -153,6 +156,14 @@ class AIResponder:
             medium_term_summary = result_dict.get('medium_term')
         )
     
+    async def _moderate(self, last_message_content: str) -> LLMModerator.Result:
+       return await self._moderator.moderate(Prompt(messages=(
+            {
+                "role": "user", 
+                "content": last_message_content
+            },
+        )))
+
     async def create_response(self) -> Response:
         MAIN_CLIENT_NAME = "PERSONALITY"
         prompt_data = await self._gather_prompt_data()
@@ -167,6 +178,16 @@ class AIResponder:
             medium_term_summary=prompt_data.medium_term_summary
         )
         self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
+
+        # Moderate
+        moderation_result = await self._moderate(self.last_msg_snapshot.text)
+        if moderation_result.flagged:
+            return AIResponder.Response(
+                text="This message has been flagged by moderation.", # TODO: lang 
+                attachment_description=prompt_data.attachment_description,
+                tool_call_result=None,
+                verbose_log_output=self.logger.text
+            )
 
         # Formulate responses w/ full prompt
         main_client_params = self.ai_bot.profile.request_params[MAIN_CLIENT_NAME]
@@ -226,7 +247,7 @@ class AIResponder:
             medium_term_summary: str | None
         ) -> Prompt:
         NAME = "PERSONALITY"
-        full_prompt: Prompt = self.ai_bot.profile.get_prompt(NAME)
+        full_prompt: Prompt = self.ai_bot.profile.prompts[NAME]
 
         for memorized_message in memory_snapshot.as_list():
             if memorized_message.is_bot:

@@ -26,6 +26,7 @@ class MiscOptions(BaseModel):
     enable_knowledge_retrieval: bool
     remove_trailing_newline: bool
     enable_image_viewing: bool
+    enable_moderation: bool
     botname: str
 
 class MemorySettings(BaseModel):
@@ -34,6 +35,14 @@ class MemorySettings(BaseModel):
     short_term_history_length: int
     enable_medium_term_memory: bool
     medium_term_history_length: int
+
+class DictLikeRegistry:
+    # I need a way to make key pair values explicit
+    def __init__(self):
+        self._internal_dict = {}
+
+    def get(self, key: str): # Need to return the value type here
+        return self._internal_dict[key]
 
 class Profile(BaseModel):
     options: MiscOptions
@@ -44,12 +53,6 @@ class Profile(BaseModel):
     providers: Dict[str, ProviderData]
     regex_replacements: Dict[str, str | list[str]]
     fal_image_gen_config: FalImageGenModuleConfig
-
-    def get_prompt(self, name: str) -> Prompt:
-        if name in self.prompts:
-            return self.prompts[name].model_copy(deep=True)
-        else:
-            raise ValueError(f"Request prompt '{name}' does not exist")
 
     @classmethod
     def from_file(cls, filename: str) -> "Profile":

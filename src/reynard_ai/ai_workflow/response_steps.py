@@ -10,8 +10,8 @@ class ResponseStep(ABC):
         self.elapsed_ms: float | None = None
         self.logger = logger
     
-    async def execute(self, bot_data: AIBot, message: str) -> str | None:
-        self.bot_data: AIBot = bot_data
+    async def execute(self, ai_bot: AIBot, message: str) -> str | None:
+        self.ai_bot: AIBot = ai_bot
         self.message = message
         start = time.perf_counter()
         ret = await self._run()
@@ -22,11 +22,11 @@ class ResponseStep(ABC):
         return ret
 
     def _get_prompt(self, name: str):
-        if name not in self.bot_data.profile.prompts:
-            available_prompts = ", ".join(p for p in self.bot_data.profile.prompts.keys())
+        if name not in self.ai_bot.profile.prompts:
+            available_prompts = ", ".join(p for p in self.ai_bot.profile.prompts.keys())
             raise ValueError(f"Failed to fetch required prompt {name}, it doesn't exist. Available prompts: {available_prompts}")
         else:
-            return self.bot_data.profile.prompts[name]
+            return self.ai_bot.profile.prompts[name]
 
     @abstractmethod
     async def _run(self) -> str | None:
@@ -43,7 +43,7 @@ class PersonalityRewriteStep(ResponseStep):
         prompt = rewriter_prompt.replace({
             "message": self.message
         })
-        response = await self.bot_data.send_llm_request(
+        response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,
             parameter_set_name=NAME
@@ -57,7 +57,7 @@ class PersonalityRewriteStep(ResponseStep):
 class UserQueryRephraseStep(ResponseStep):
     async def _run(self):
         NAME = "USER_QUERY_REPHRASE"
-        recent_history_list = self.bot_data.short_term_memory.backing_history.as_list()
+        recent_history_list = self.ai_bot.short_term_memory.backing_history.as_list()
         user_prompt_str = "\n".join(
             [memorized_message.text for memorized_message in recent_history_list]
         )
@@ -66,7 +66,7 @@ class UserQueryRephraseStep(ResponseStep):
             "user_query": user_prompt_str, 
             "last_user": last_user
         })
-        response = await self.bot_data.send_llm_request(
+        response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,
             parameter_set_name=NAME
@@ -80,17 +80,17 @@ class UserQueryRephraseStep(ResponseStep):
 class HistorySummarizerStep(ResponseStep):
     async def _run(self):
         NAME = "HISTORY_SUMMARIZE"
-        medium_term_memory_len = self.bot_data.profile.memory_settings.medium_term_history_length
-        if self.bot_data.medium_term_memory is None:
+        medium_term_memory_len = self.ai_bot.profile.memory_settings.medium_term_history_length
+        if self.ai_bot.medium_term_memory is None:
             raise RuntimeError("Cannot summarize medium-term memory because this bot has the option disabled")
-        msgs_to_summarize = self.bot_data.medium_term_memory.backing_history.as_list()[-medium_term_memory_len:]
+        msgs_to_summarize = self.ai_bot.medium_term_memory.backing_history.as_list()[-medium_term_memory_len:]
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )
-        prompt = self.bot_data.profile.prompts[NAME].replace({
+        prompt = self.ai_bot.profile.prompts[NAME].replace({
             "messages": msgs_to_summarize_str
         })
-        response = await self.bot_data.send_llm_request(
+        response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,
             parameter_set_name=NAME
@@ -109,7 +109,7 @@ class RelevantInfoSelectStep(ResponseStep):
     async def _run(self):
         NAME = "INFO_SELECT"
         available_info = ""
-        hits_list = await self.bot_data.knowledge.retrieve(self.user_query)
+        hits_list = await self.ai_bot.knowledge.retrieve(self.user_query)
 
         if len(hits_list) == 0:
             return None
@@ -123,7 +123,7 @@ class RelevantInfoSelectStep(ResponseStep):
                 "user_query": self.user_query,
                 "available_info": available_info
             })
-        response = await self.bot_data.send_llm_request(
+        response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,
             parameter_set_name=NAME

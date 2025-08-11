@@ -160,7 +160,10 @@ class AIResponder:
        moderation_prompt = self.ai_bot.profile.prompts[NAME].replace({
            "message": self.last_msg_snapshot.text
         })
-       return await self._moderator.moderate(moderation_prompt)
+       self.logger.verbose(f"Moderating prompt: {moderation_prompt}")
+       moderation_result = await self._moderator.moderate(moderation_prompt)
+       self.logger.verbose(f"Moderation result: flagged? {moderation_result.flagged} | Categories: {moderation_result.category_scores}")
+       return moderation_result
 
     async def create_response(self) -> Response:
         MAIN_CLIENT_NAME = "PERSONALITY"

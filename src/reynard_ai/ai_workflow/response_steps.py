@@ -40,7 +40,7 @@ class PersonalityRewriteStep(ResponseStep):
     async def _run(self):
         NAME = "PERSONALITY_REWRITE"
         rewriter_prompt = self._get_prompt(NAME)
-        prompt = rewriter_prompt.replace({
+        prompt = rewriter_prompt.replace_or_throw({
             "message": self.message
         })
         response = await self.ai_bot.send_llm_request(
@@ -48,7 +48,7 @@ class PersonalityRewriteStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {prompt}\nResposne: {response}", category=NAME) 
+        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME) 
         return response.message.content
     
     def get_name(self) -> str | None:
@@ -87,7 +87,7 @@ class HistorySummarizerStep(ResponseStep):
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )
-        prompt = self.ai_bot.profile.prompts[NAME].replace({
+        prompt = self.ai_bot.profile.prompts[NAME].replace_or_throw({
             "messages": msgs_to_summarize_str
         })
         response = await self.ai_bot.send_llm_request(

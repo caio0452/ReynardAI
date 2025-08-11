@@ -1,5 +1,4 @@
 import re
-import json
 
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -7,6 +6,7 @@ from pydantic import BaseModel, Field
 OpenAIMessage = dict[str, list | str | dict]
 
 class Prompt(BaseModel, frozen=True):
+    PROMPT_PLACEHOLDER_RE = re.compile(pattern=r"\(\((\w+)\)\)")
     messages: tuple[OpenAIMessage, ...] = Field(...)
 
     @staticmethod
@@ -36,37 +36,46 @@ class Prompt(BaseModel, frozen=True):
     def assistant_msg(content: str) -> OpenAIMessage:
         return {"role": "assistant", "content": content}
 
-    # TODO: don't hardcode format
-    def replace(self, replacements: dict[str, str]) -> "Prompt":
-        placeholder_format = "((placeholder))"
-        modified_messages = []
-        prompt_as_str = json.dumps(self.messages)
-        all_formatted_placeholders = [
-            placeholder_format.replace("placeholder", k) for k, v in replacements.items()
-        ]
-        for match in re.findall(r"\(\(\w+\)\)", prompt_as_str):
-            if match not in all_formatted_placeholders:
-                raise ValueError(f"Missing placeholder replacement for '{match}'. Must specify all prompt placeholders, got only: {replacements}")
-
-        def replace_all_in_dict(dict_data: dict, old_str, new_str) -> dict:
-            replaced_dict = dict_data.copy()
-            for k, v in dict_data.items():
-                if isinstance(v, str):
-                    replaced_dict[k] = v.replace(old_str, new_str)
-                elif isinstance(v, dict):
-                    replaced_dict[k] = replace_all_in_dict(replaced_dict, old_str, new_str)
-                else:
-                    raise ValueError(f"Cannot parse prompt dictionary because one of the keys is not str or dict: {dict_data}")
-            return replaced_dict 
+    def replace_or_throw(self, replacements: dict[str, str], *, require_all: bool = True):
+        return self.replace(replacements, require_all=require_all, forbid_extra=True)
     
-        for message in self.messages:
-            modified_message = message
-            for placeholder, replacement in replacements.items():
-                formatted_placeholder = placeholder_format.replace("placeholder", placeholder)
-                modified_message = replace_all_in_dict(modified_message, formatted_placeholder, replacement)
-            modified_messages.append(modified_message)
+    def replace(self, replacements: dict[str, str], *, require_all: bool = True, forbid_extra: bool = False) -> "Prompt":
+        found: set[str] = set()
+        missing: set[str] = set()
 
-        return Prompt(messages=tuple(modified_messages))
+        def replace_in_str(s: str) -> str:
+            def _sub(m: re.Match[str]) -> str:
+                key = m.group(1)
+                found.add(key)
+                if key in replacements:
+                    return str(replacements[key])
+                missing.add(key)
+                return m.group(0)
+            return Prompt.PROMPT_PLACEHOLDER_RE.sub(_sub, s)
+
+        def walk(obj):
+            if isinstance(obj, str):
+                return replace_in_str(obj)
+            if isinstance(obj, list):
+                return [walk(x) for x in obj]
+            if isinstance(obj, dict):
+                return {k: walk(v) for k, v in obj.items()}
+            return obj
+
+        new_messages = tuple(walk(m) for m in self.messages)
+
+        if require_all and missing:
+            raise ValueError(
+                f"Missing placeholder replacement for {sorted(missing)}. "
+                f"Provided: {sorted(replacements.keys())}"
+            )
+
+        if forbid_extra:
+            extra = set(replacements.keys()) - found
+            if extra:
+                raise ValueError(f"The following replacements must be in your prompt: {sorted(extra)}")
+            
+        return Prompt(messages=new_messages)
 
     def to_openai_format(self) -> tuple[OpenAIMessage, ...]:
         return self.messages

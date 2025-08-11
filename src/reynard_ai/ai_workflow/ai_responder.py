@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-
-
 from ..bot_data.ai_bot import AIBot
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
@@ -157,12 +155,12 @@ class AIResponder:
         )
     
     async def _moderate(self, last_message_content: str) -> LLMModerator.Result:
-       return await self._moderator.moderate(Prompt(messages=(
-            {
-                "role": "user", 
-                "content": last_message_content
-            },
-        )))
+       # TODO: abstract this into a ResponseStep
+       NAME = "MODERATOR"
+       moderation_prompt = self.ai_bot.profile.prompts[NAME].replace({
+           "message": self.last_msg_snapshot.text
+        })
+       return await self._moderator.moderate(moderation_prompt)
 
     async def create_response(self) -> Response:
         MAIN_CLIENT_NAME = "PERSONALITY"

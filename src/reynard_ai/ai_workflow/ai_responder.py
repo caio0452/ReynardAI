@@ -172,6 +172,7 @@ class AIResponder:
         # Moderate
         moderation_result = await self._moderate(self.last_msg_snapshot.text)
         if moderation_result.flagged:
+            await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
             return AIResponder.Response(
                 text="This message has been flagged by moderation.", # TODO: lang 
                 attachment_description=prompt_data.attachment_description,

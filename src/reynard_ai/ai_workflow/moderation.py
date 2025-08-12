@@ -31,12 +31,7 @@ class LLMModerator(Moderator):
         self.client: LLMClient = LLMClient.from_provider(self.moderator_provider)
 
     async def moderate(self, input: Prompt) -> Moderator.Result:
-        history: str = ""
-        for msg in input.to_openai_format():
-            if isinstance(msg["content"], str): 
-                history += msg["content"]
-        
-        result = await self.client.send_request(prompt=self.moderator_prompt, params=self.moderator_parameters)
+        result = await self.client.send_request(prompt=input, params=self.moderator_parameters)
         msg = result.message.content
         if msg is None:
             raise RuntimeError("Failed to moderate: moderator returned no response")

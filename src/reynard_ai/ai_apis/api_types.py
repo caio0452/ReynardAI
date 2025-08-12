@@ -1,12 +1,12 @@
 import re
 
-from typing import Optional
+from typing import ClassVar, Optional
 from pydantic import BaseModel, Field
 
 OpenAIMessage = dict[str, list | str | dict]
 
 class Prompt(BaseModel, frozen=True):
-    PROMPT_PLACEHOLDER_RE = re.compile(pattern=r"\(\((\w+)\)\)")
+    PROMPT_PLACEHOLDER_RE: ClassVar = re.compile(pattern=r"\(\((\w+)\)\)")
     messages: tuple[OpenAIMessage, ...] = Field(...)
 
     @staticmethod

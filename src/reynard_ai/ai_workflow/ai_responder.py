@@ -169,6 +169,16 @@ class AIResponder:
         MAIN_CLIENT_NAME = "PERSONALITY"
         prompt_data = await self._gather_prompt_data()
 
+        # Moderate
+        moderation_result = await self._moderate(self.last_msg_snapshot.text)
+        if moderation_result.flagged:
+            return AIResponder.Response(
+                text="This message has been flagged by moderation.", # TODO: lang 
+                attachment_description=prompt_data.attachment_description,
+                tool_call_result=None,
+                verbose_log_output=self.logger.text
+            )
+
         # Build full prompt from info
         full_prompt = await self._format_full_prompt(
             memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
@@ -179,16 +189,6 @@ class AIResponder:
             medium_term_summary=prompt_data.medium_term_summary
         )
         self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
-
-        # Moderate
-        moderation_result = await self._moderate(self.last_msg_snapshot.text)
-        if moderation_result.flagged:
-            return AIResponder.Response(
-                text="This message has been flagged by moderation.", # TODO: lang 
-                attachment_description=prompt_data.attachment_description,
-                tool_call_result=None,
-                verbose_log_output=self.logger.text
-            )
 
         # Formulate responses w/ full prompt
         main_client_params = self.ai_bot.profile.request_params[MAIN_CLIENT_NAME]

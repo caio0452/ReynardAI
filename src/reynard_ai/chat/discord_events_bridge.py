@@ -3,11 +3,11 @@ from typing import Any
 from discord.ext import commands
 from abc import ABC, abstractmethod
 
-from ..chat.chatroom import Chatroom
+from .chatroom import Chatroom
 from ..events.event_bus import AsyncEventBus
-from ..chat.message_snapshot import MessageSnapshot
+from .message_snapshot import MessageSnapshot
 from ..events.message_events import MessageSnapshotEvent
-from ..chat.message_history import SynchronizedMessageHistory
+from .message_history import SynchronizedMessageHistory
 
 class MessageToChatroomMapper(ABC):
     def __init__(self, known_chatrooms: list[Chatroom]):

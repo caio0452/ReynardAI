@@ -1,4 +1,5 @@
 import time
+import json
 
 from ..bot_data.ai_bot import AIBot
 from abc import ABC, abstractmethod
@@ -48,7 +49,7 @@ class PersonalityRewriteStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME) 
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}\nResponse: {response}", category=NAME) 
         return response.message.content
     
     def get_name(self) -> str | None:
@@ -71,7 +72,7 @@ class UserQueryRephraseStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}\nResponse: {response}", category=NAME)
         return response.message.content
     
     def get_name(self) -> str | None:
@@ -95,12 +96,44 @@ class HistorySummarizerStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}\nResponse: {response}", category=NAME)
         return response.message.content
     
     def get_name(self) -> str | None:
         return "history summarizer"
     
+class AttachmentDescribeStep(ResponseStep):
+    def __init__(self, *, logger: SimpleDebugLogger, attachment_urls: list[str]):
+        super().__init__(logger)
+        self.attachment_urls = attachment_urls
+
+    async def _run(self):
+        NAME = "ATTACHMENT_DESCRIBE"
+        attachment_urls = self.attachment_urls
+        valid_extensions = [".png", ".jpg", ".jpeg"]
+        if len(attachment_urls) == 0:
+            raise RuntimeError("Cannot run attachment description step with no attachments")
+        if len(attachment_urls) == 2:
+            return "I cannot view multiple attachments, please attach at most one."
+        
+        attachment_url = attachment_urls[0]
+        if not any([
+            attachment_url.endswith(ext) 
+            for ext in valid_extensions
+        ]):
+            return "I can only view .png, .jpg and .jpeg files"
+        
+        prompt = self._get_prompt(NAME)
+        response = await self.ai_bot.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
+        )
+        return response.message.content
+    
+    def get_name(self) -> str | None:
+        return "attachment describer"
+
 class RelevantInfoSelectStep(ResponseStep):
     def __init__(self, *, logger: SimpleDebugLogger, user_query: str):
         super().__init__(logger)
@@ -128,7 +161,7 @@ class RelevantInfoSelectStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {prompt}\nResponse: {response}", category=NAME)
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}\nResponse: {response}", category=NAME)
         return response.message.content
     
     def get_name(self) -> str | None:

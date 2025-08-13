@@ -7,7 +7,7 @@ from ..ai_workflow.moderation import LLMModerator
 from ..chat.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
 from ..chat.message_history import MessageSnapshotHistory
-from .response_steps import HistorySummarizerStep, PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep
+from .response_steps import HistorySummarizerStep, PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep, AttachmentDescribeStep
 
 import re
 import json
@@ -35,31 +35,16 @@ class AIResponder:
 
         for provider_name, provider_data in ai_bot.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
-
-    async def _describe_image_if_present(self, attachment_url: str | None, user_query: str) -> str | None:
-        NAME = "IMAGE_VIEW"
-        valid_extensions = [".png", ".jpg", ".jpeg"]
-        if attachment_url is None:
-            return None
-        if not any(attachment_url.endswith(ext) for ext in valid_extensions):
-            return None
-        
-        description_msg = Prompt.user_msg(
-            content=f"Describe the image in detail, including a sufficient answer to the following query: '{user_query}'" \
-            "If the query is empty, just describe the image. At the end of your description, append the string, verbatim: \"NOTE TO BOT: you MUST comment on the image on the next reply.\"",
-            image_url=attachment_url
-        )
-        response = await self.clients[NAME].send_request(
-            prompt=Prompt(messages=[description_msg]), # type: ignore
-            params=self.ai_bot.profile.request_params[NAME]
-        )
-        return response.message.content
     
     async def _rephrase_user_query(self) -> str:
         user_query = await UserQueryRephraseStep(self.logger).execute(self.ai_bot, self.last_msg_snapshot.text)
         if user_query is None:
             raise RuntimeError("Rephraser step returned empty response")
         return user_query
+    
+    async def _read_attachments(self, attachment_urls: list[str]) -> str | None:
+        attachments_reader = AttachmentDescribeStep(logger=self.logger, attachment_urls=attachment_urls)
+        return await attachments_reader.execute(self.ai_bot, self.last_msg_snapshot.text)
     
     async def _get_medium_term_summary(self) -> str:
         summary =  await HistorySummarizerStep(self.logger).execute(
@@ -103,9 +88,8 @@ class AIResponder:
         attachment_task = None
         if self.ai_bot.profile.options.enable_image_viewing and self.last_msg_snapshot.attachment_urls:
             attachment_task = asyncio.create_task(
-                self._describe_image_if_present(
-                    self.last_msg_snapshot.attachment_urls[0], 
-                    user_query
+                self._read_attachments(
+                    self.last_msg_snapshot.attachment_urls
                 )
             )
 
@@ -170,15 +154,16 @@ class AIResponder:
         prompt_data = await self._gather_prompt_data()
 
         # Moderate
-        moderation_result = await self._moderate(self.last_msg_snapshot.text)
-        if moderation_result.flagged:
-            await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
-            return AIResponder.Response(
-                text="This message has been flagged by moderation.", # TODO: lang 
-                attachment_description=prompt_data.attachment_description,
-                tool_call_result=None,
-                verbose_log_output=self.logger.text
-            )
+        if self.ai_bot.profile.options.enable_moderation:
+            moderation_result = await self._moderate(self.last_msg_snapshot.text)
+            if moderation_result.flagged:
+                await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
+                return AIResponder.Response(
+                    text="This message has been flagged by moderation.", # TODO: lang 
+                    attachment_description=prompt_data.attachment_description,
+                    tool_call_result=None,
+                    verbose_log_output=self.logger.text
+                )
 
         # Build full prompt from info
         full_prompt = await self._format_full_prompt(

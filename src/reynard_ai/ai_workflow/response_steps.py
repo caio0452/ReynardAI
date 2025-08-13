@@ -1,5 +1,6 @@
 import time
 import json
+import requests
 
 from ..bot_data.ai_bot import AIBot
 from abc import ABC, abstractmethod
@@ -110,18 +111,16 @@ class AttachmentDescribeStep(ResponseStep):
     async def _run(self):
         NAME = "ATTACHMENT_DESCRIBE"
         attachment_urls = self.attachment_urls
-        valid_extensions = [".png", ".jpg", ".jpeg"]
+        
         if len(attachment_urls) == 0:
             raise RuntimeError("Cannot run attachment description step with no attachments")
         if len(attachment_urls) == 2:
             return "I cannot view multiple attachments, please attach at most one."
         
         attachment_url = attachment_urls[0]
-        if not any([
-            attachment_url.endswith(ext) 
-            for ext in valid_extensions
-        ]):
-            return "I can only view .png, .jpg and .jpeg files"
+        ctype = requests.head(attachment_url).headers.get("Content-Type", "").lower()
+        if ctype not in ["image/png", "image/jpeg"]:
+            self.logger.verbose(f"Unsupported content type '{ctype}', ignoring attachment description for {attachment_url}", category=NAME)
         
         prompt = self._get_prompt(NAME).replace(
             {"attachment_url": attachment_url}
@@ -131,6 +130,7 @@ class AttachmentDescribeStep(ResponseStep):
             prompt=prompt,
             parameter_set_name=NAME
         )
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}")
         return response.message.content
     
     def get_name(self) -> str | None:

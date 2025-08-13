@@ -123,7 +123,9 @@ class AttachmentDescribeStep(ResponseStep):
         ]):
             return "I can only view .png, .jpg and .jpeg files"
         
-        prompt = self._get_prompt(NAME)
+        prompt = self._get_prompt(NAME).replace(
+            {"attachment_url": attachment_url}
+        )
         response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,

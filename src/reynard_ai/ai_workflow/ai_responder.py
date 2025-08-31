@@ -179,6 +179,7 @@ class AIResponder:
         # Formulate responses w/ full prompt
         main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
         model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
+        exceptions: list[BaseException] = []
         llm_response = None
         for name in model_names_order:
             modified_params = main_client_params.model_copy(deep=True)
@@ -198,10 +199,14 @@ class AIResponder:
                 self.logger.verbose(f"{raw_response}", category="FULL RESPONSE")
                 break
             except Exception as e:
+                exceptions.append(e)
                 self.logger.verbose(f"Request to LLM '{name}' failed with error: {e}", category="MODEL FAILURE")
                 logging.exception(e)
         if llm_response is None:
-            raise RuntimeError("Cannot generate response and all fallbacks failed")
+            if len(exceptions) > 0:
+                raise RuntimeError("Cannot generate response and all fallbacks failed. Last error: ", exceptions[-1])
+            else:
+                raise RuntimeError("Cannot generate response and all fallbacks failed. Last fallback generated an empty response")
         
         # Rewrite in-character
         if self.ai_bot.profile.options.enable_personality_rewrite:

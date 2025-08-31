@@ -36,14 +36,6 @@ class MemorySettings(BaseModel):
     enable_medium_term_memory: bool
     medium_term_history_length: int
 
-class DictLikeRegistry:
-    # I need a way to make key pair values explicit
-    def __init__(self):
-        self._internal_dict = {}
-
-    def get(self, key: str): # Need to return the value type here
-        return self._internal_dict[key]
-
 class Profile(BaseModel):
     options: MiscOptions
     memory_settings: MemorySettings
@@ -53,6 +45,36 @@ class Profile(BaseModel):
     providers: Dict[str, ProviderData]
     regex_replacements: Dict[str, str | list[str]]
     fal_image_gen_config: FalImageGenModuleConfig
+
+    def get_provider(self, name: str) -> ProviderData:
+        if name in self.providers:
+            return self.providers[name]
+        else:
+            available_providers = ", ".join([
+                name for
+                name, data in self.providers
+            ])
+            raise RuntimeError(f"Failed to get provider '{name}', available providers are: {available_providers}")
+
+    def get_prompt(self, name: str) -> Prompt:
+        if name in self.prompts:
+            return self.prompts[name]
+        else:
+            available_prompts = ", ".join([
+                name for
+                name, data in self.prompts
+            ])
+            raise RuntimeError(f"Failed to get prompt '{name}', available prompts are: {available_prompts}")
+
+    def get_request_params(self, name: str) -> LLMRequestParams:
+        if name in self.request_params:
+            return self.request_params[name]
+        else:
+            available_params = ", ".join([
+                name for
+                name, data in self.request_params
+            ])
+            raise RuntimeError(f"Failed to get parameter set named '{name}', available parameters are: {available_params}")        
 
     @classmethod
     def from_file(cls, filename: str) -> "Profile":

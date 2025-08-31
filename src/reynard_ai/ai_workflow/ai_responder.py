@@ -177,7 +177,7 @@ class AIResponder:
         self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
 
         # Formulate responses w/ full prompt
-        main_client_params = self.ai_bot.profile.request_params[MAIN_CLIENT_NAME]
+        main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
         model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
         llm_response = None
         for name in model_names_order:

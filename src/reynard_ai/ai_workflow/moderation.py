@@ -19,15 +19,9 @@ class Moderator(ABC):
 class LLMModerator(Moderator):
     def __init__(self, profile: Profile):
         NAME = "MODERATOR"
-        if NAME not in profile.providers:
-            raise RuntimeError(f"Could not initialize moderation, missing provider '{NAME}'")
-        if NAME not in profile.prompts:
-            raise RuntimeError(f"Could not initialize moderation, missing prompt '{NAME}'")
-        if NAME not in profile.request_params:
-            raise RuntimeError(f"Could not initialize moderation, missing parameters for '{NAME}'")
-        self.moderator_prompt = profile.prompts[NAME]
-        self.moderator_provider = profile.providers[NAME]
-        self.moderator_parameters = profile.request_params[NAME]
+        self.moderator_prompt = profile.get_prompt(NAME)
+        self.moderator_provider = profile.get_provider(NAME)
+        self.moderator_parameters = profile.get_request_params(NAME)
         self.client: LLMClient = LLMClient.from_provider(self.moderator_provider)
 
     async def moderate(self, input: Prompt) -> Moderator.Result:

@@ -40,12 +40,7 @@ class AIBot(AbstractAIBot):
     async def send_llm_request(self, *, provider_name: str, prompt: Prompt, parameter_set_name: str | None = None):
         if parameter_set_name is None:
             parameter_set_name = provider_name
-            
-        if provider_name not in self.profile.request_params:
-            raise RuntimeError(f"Failed to send request with prompt:\n{str(prompt)}\nbecause provider named '{provider_name}' does not exist")   
-        if parameter_set_name not in self.profile.request_params:
-            raise RuntimeError(f"Failed to send request with prompt:\n{str(prompt)}\nbecause parameter set named '{parameter_set_name}' does not exist")
-        params = self.profile.request_params[provider_name]
-        provider: providers.ProviderData = self.profile.providers[parameter_set_name]
+        params = self.profile.get_request_params(provider_name)
+        provider: providers.ProviderData = self.profile.get_provider(parameter_set_name)
         client: LLMClient = LLMClient.from_provider(provider)
         return await client.send_request(prompt=prompt, params=params)

@@ -192,7 +192,7 @@ class AIResponder:
             self.logger.verbose(f"Sending request to model name '{name}' with parameters {modified_params.model_dump_json(indent=4)}", category="REQUEST")
             try:
                 raw_response = await self.clients[MAIN_CLIENT_NAME].send_request(
-                    prompt=full_prompt,
+                    prompt=full_prompt.model_copy(deep=True), # TODO: this is being deep-copied all over the place
                     params=modified_params
                 )
                 llm_response = raw_response.message.content
@@ -239,7 +239,7 @@ class AIResponder:
             medium_term_summary: str | None
         ) -> Prompt:
         NAME = "PERSONALITY"
-        full_prompt: Prompt = self.ai_bot.profile.prompts[NAME]
+        full_prompt: Prompt = self.ai_bot.profile.prompts[NAME].model_copy(deep=True)
 
         for memorized_message in memory_snapshot.as_list():
             if memorized_message.is_bot:

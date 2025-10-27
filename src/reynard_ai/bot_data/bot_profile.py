@@ -52,7 +52,7 @@ class Profile(BaseModel):
         else:
             available_providers = ", ".join([
                 name for
-                name, data in self.providers
+                name, data in self.providers.items()
             ])
             raise RuntimeError(f"Failed to get provider '{name}', available providers are: {available_providers}")
 
@@ -62,7 +62,7 @@ class Profile(BaseModel):
         else:
             available_prompts = ", ".join([
                 name for
-                name, data in self.prompts
+                name, data in self.prompts.items()
             ])
             raise RuntimeError(f"Failed to get prompt '{name}', available prompts are: {available_prompts}")
 
@@ -72,9 +72,9 @@ class Profile(BaseModel):
         else:
             available_params = ", ".join([
                 name for
-                name, data in self.request_params
+                name, data in self.request_params.items()
             ])
-            raise RuntimeError(f"Failed to get parameter set named '{name}', available parameters are: {available_params}")        
+            raise RuntimeError(f"Failed to get parameter set named '{name}', available parameters are: {available_params}")
 
     @classmethod
     def from_file(cls, filename: str) -> "Profile":

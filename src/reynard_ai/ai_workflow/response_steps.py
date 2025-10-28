@@ -1,5 +1,7 @@
 import time
 import json
+import base64
+import aiohttp
 import requests
 
 from ..bot_data.ai_bot import AIBot
@@ -114,25 +116,24 @@ class AttachmentDescribeStep(ResponseStep):
         
         if len(attachment_urls) == 0:
             raise RuntimeError("Cannot run attachment description step with no attachments")
-        if len(attachment_urls) == 2:
+        if len(attachment_urls) > 1:
             return "I cannot view multiple attachments, please attach at most one."
         
         attachment_url = attachment_urls[0]
         ctype = requests.head(attachment_url).headers.get("Content-Type", "").lower()
         if ctype not in ["image/png", "image/jpeg"]:
             self.logger.verbose(f"Unsupported content type '{ctype}', ignoring attachment description for {attachment_url}", category=NAME)
-        
-        prompt = self._get_prompt(NAME).replace(
-            {"attachment_url": attachment_url}
-        )
-        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}")
-        response = await self.ai_bot.send_llm_request(
-            provider_name=NAME,
-            prompt=prompt,
-            parameter_set_name=NAME
-        )
-        return response.message.content
-    
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(attachment_url) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"Failed to download image: HTTP {resp.status}")
+                data = await resp.read()
+                encoded_image = base64.b64encode(data).decode("utf-8")
+
+        # You can now use or return the Base64 data
+        return encoded_image
+
     def get_name(self) -> str | None:
         return "attachment describer"
 

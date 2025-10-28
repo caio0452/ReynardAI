@@ -66,6 +66,7 @@ class BaseChatHandler(abc.ABC):
                 f"Error while generating response. The ID for this log is {log_id}: ```{str(resp.fail_exception)[:1000]}```",
                 event
             )
+            ResponseLogsManager.instance().store_log(log_id, resp.verbose_log_output)
             await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
 
     async def handle_log_request(self, content: str, original_event: MessageSnapshotEvent):
@@ -92,14 +93,6 @@ class BaseChatHandler(abc.ABC):
         except ValueError:
             invalid_log_msg = self.ai_bot.profile.lang["invalid_log_request"].format(content)
             await self._send_reply(invalid_log_msg, original_event)
-
-    async def handle_error(self, event: MessageSnapshotEvent, error: Exception):
-        await self.forget_message(event.snapshot)
-        log_id = event.snapshot.message_id
-        error_msg_str = f"Error while generating response. The ID for this log is {log_id}: ```{str(error)[:1000]}```"
-        await self._send_reply(error_msg_str, event)
-        ResponseLogsManager.instance().store_log(log_id, error_msg_str)
-        traceback.print_exc()
 
     async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
         if add_after_id is None:

@@ -1,5 +1,4 @@
 import abc
-from re import error
 import traceback
 
 from typing import Any
@@ -64,7 +63,7 @@ class BaseChatHandler(abc.ABC):
         else:
             log_id = event.snapshot.message_id
             sent_message_snapshot = await self._send_reply(
-                f"Error while generating response. The ID for this log is {log_id}: ```{str(error)[:1000]}```", 
+                f"Error while generating response. The ID for this log is {log_id}: ```{str(resp.fail_exception)[:1000]}```",
                 event
             )
             await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)

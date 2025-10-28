@@ -88,8 +88,10 @@ class BaseChatHandler(abc.ABC):
 
     async def handle_error(self, event: MessageSnapshotEvent, error: Exception):
         await self.forget_message(event.snapshot)
-        error_msg = f"There was an error: ```{str(error)[:1000]}```"
-        await self._send_reply(error_msg, event)
+        error_msg_str = f"There was an error: ```{str(error)[:1000]}```"
+        error_msg = await self._send_reply(error_msg_str, event)
+        if error_msg is not None:
+            ResponseLogsManager.instance().store_log(error_msg.message_id, error_msg.verbose_log_output)
         traceback.print_exc()
 
     async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:

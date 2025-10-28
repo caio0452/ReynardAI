@@ -45,21 +45,17 @@ class BaseChatHandler(abc.ABC):
     async def respond_with_llm(self, event: MessageSnapshotEvent, *, verbose: bool = False):
         user_snapshot = event.snapshot
         await self.memorize_message(user_snapshot, pending=True, add_after_id=None)
-        
+
         typing_context = await self._send_typing_indicator(event)
 
-        try:
-            responder = AIResponder(self.ai_bot, event.chatroom, event.snapshot, verbose=verbose)
-            resp = await responder.create_response()
-            sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
-            await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
-            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
-            if self.ai_bot.medium_term_memory is not None:
-                await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
-            ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
-
-        except Exception as e:
-            await self.handle_error(event, e)
+        responder = AIResponder(self.ai_bot, event.chatroom, event.snapshot, verbose=verbose)
+        resp = await responder.create_response()
+        sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
+        await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
+        await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
+        if self.ai_bot.medium_term_memory is not None:
+            await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
+        ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
 
     async def handle_log_request(self, content: str, original_event: MessageSnapshotEvent):
         try:
@@ -88,10 +84,10 @@ class BaseChatHandler(abc.ABC):
 
     async def handle_error(self, event: MessageSnapshotEvent, error: Exception):
         await self.forget_message(event.snapshot)
-        error_msg_str = f"There was an error: ```{str(error)[:1000]}```"
-        error_msg = await self._send_reply(error_msg_str, event)
-        if error_msg is not None:
-            ResponseLogsManager.instance().store_log(error_msg.message_id, error_msg.verbose_log_output)
+        log_id = event.snapshot.message_id
+        error_msg_str = f"Error while generating response. The ID for this log is {log_id}: ```{str(error)[:1000]}```"
+        await self._send_reply(error_msg_str, event)
+        ResponseLogsManager.instance().store_log(log_id, error_msg_str)
         traceback.print_exc()
 
     async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:

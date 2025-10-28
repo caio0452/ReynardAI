@@ -20,6 +20,7 @@ class AIResponder:
     @dataclass
     class Response:
         text: str
+        failed: bool
         attachment_description: str | None
         tool_call_result: str | None
         verbose_log_output: str
@@ -150,83 +151,96 @@ class AIResponder:
        return moderation_result
 
     async def create_response(self) -> Response:
-        MAIN_CLIENT_NAME = "PERSONALITY"
-        prompt_data = await self._gather_prompt_data()
+        try:
+            MAIN_CLIENT_NAME = "PERSONALITY"
+            prompt_data = await self._gather_prompt_data()
 
-        # Moderate
-        if self.ai_bot.profile.options.enable_moderation:
-            moderation_result = await self._moderate(self.last_msg_snapshot.text)
-            if moderation_result.flagged:
-                await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
-                return AIResponder.Response(
-                    text="This message has been flagged by moderation.", # TODO: lang 
-                    attachment_description=prompt_data.attachment_description,
-                    tool_call_result=None,
-                    verbose_log_output=self.logger.text
-                )
+            # Moderate
+            if self.ai_bot.profile.options.enable_moderation:
+                moderation_result = await self._moderate(self.last_msg_snapshot.text)
+                if moderation_result.flagged:
+                    await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
+                    return AIResponder.Response(
+                        text="This message has been flagged by moderation.", # TODO: lang
+                        attachment_description=prompt_data.attachment_description,
+                        failed=True,
+                        tool_call_result=None,
+                        verbose_log_output=self.logger.text
+                    )
 
-        # Build full prompt from info
-        full_prompt = await self._format_full_prompt(
-            memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
-            user_nick=self.last_msg_snapshot.nick,
-            attachment_description=prompt_data.attachment_description,
-            relevant_info=prompt_data.knowledge,
-            old_memories=prompt_data.old_memories,
-            medium_term_summary=prompt_data.medium_term_summary
-        )
-        self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
-
-        # Formulate responses w/ full prompt
-        main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
-        model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
-        exceptions: list[BaseException] = []
-        llm_response = None
-        for name in model_names_order:
-            modified_params = main_client_params.model_copy(deep=True)
-            modified_params = LLMRequestParams(
-                model_name=name,
-                temperature=main_client_params.temperature,
-                max_tokens=main_client_params.max_tokens,
-                logit_bias=main_client_params.logit_bias
+            # Build full prompt from info
+            full_prompt = await self._format_full_prompt(
+                memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
+                user_nick=self.last_msg_snapshot.nick,
+                attachment_description=prompt_data.attachment_description,
+                relevant_info=prompt_data.knowledge,
+                old_memories=prompt_data.old_memories,
+                medium_term_summary=prompt_data.medium_term_summary
             )
-            self.logger.verbose(f"Sending request to model name '{name}' with parameters {modified_params.model_dump_json(indent=4)}", category="REQUEST")
-            try:
-                raw_response = await self.clients[MAIN_CLIENT_NAME].send_request(
-                    prompt=full_prompt.model_copy(deep=True), # TODO: this is being deep-copied all over the place
-                    params=modified_params
-                )
-                llm_response = raw_response.message.content
-                self.logger.verbose(f"{raw_response}", category="FULL RESPONSE")
-                break
-            except Exception as e:
-                exceptions.append(e)
-                self.logger.verbose(f"Request to LLM '{name}' failed with error: {e}", category="MODEL FAILURE")
-                logging.exception(e)
-        if llm_response is None:
-            if len(exceptions) > 0:
-                raise RuntimeError("Cannot generate response and all fallbacks failed. Last error: ", exceptions[-1])
-            else:
-                raise RuntimeError("Cannot generate response and all fallbacks failed. Last fallback generated an empty response")
-        
-        # Rewrite in-character
-        if self.ai_bot.profile.options.enable_personality_rewrite:
-            llm_response = await self._personality_rewrite(llm_response)
-        
-        # Replace undesirable text
-        for target, replacement_obj in self.ai_bot.profile.regex_replacements.items():
-            if isinstance(replacement_obj, list):
-                replacement = random.choice(replacement_obj)
-            else:
-                replacement = replacement_obj
-            llm_response = re.sub(target, replacement, llm_response)
-        self.logger.verbose(f"Sanitized text, result: {llm_response}", category="REGEX REPLACEMENT")
+            self.logger.verbose(json.dumps(full_prompt.messages, indent=4), category="FULL_PROMPT")
 
-        return AIResponder.Response(
-            text=llm_response, 
-            attachment_description=prompt_data.attachment_description,
-            tool_call_result=None,
-            verbose_log_output=self.logger.text
-        )
+            # Formulate responses w/ full prompt
+            main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
+            model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
+            exceptions: list[BaseException] = []
+            llm_response = None
+            for name in model_names_order:
+                modified_params = main_client_params.model_copy(deep=True)
+                modified_params = LLMRequestParams(
+                    model_name=name,
+                    temperature=main_client_params.temperature,
+                    max_tokens=main_client_params.max_tokens,
+                    logit_bias=main_client_params.logit_bias
+                )
+                self.logger.verbose(f"Sending request to model name '{name}' with parameters {modified_params.model_dump_json(indent=4)}", category="REQUEST")
+                try:
+                    raw_response = await self.clients[MAIN_CLIENT_NAME].send_request(
+                        prompt=full_prompt.model_copy(deep=True), # TODO: this is being deep-copied all over the place
+                        params=modified_params
+                    )
+                    llm_response = raw_response.message.content
+                    self.logger.verbose(f"{raw_response}", category="FULL RESPONSE")
+                    break
+                except Exception as e:
+                    exceptions.append(e)
+                    self.logger.verbose(f"Request to LLM '{name}' failed with error: {e}", category="MODEL FAILURE")
+                    logging.exception(e)
+            if llm_response is None:
+                if len(exceptions) > 0:
+                    raise RuntimeError("Cannot generate response and all fallbacks failed. Last error: ", exceptions[-1])
+                else:
+                    raise RuntimeError("Cannot generate response and all fallbacks failed. Last fallback generated an empty response")
+
+            # Rewrite in-character
+            if self.ai_bot.profile.options.enable_personality_rewrite:
+                llm_response = await self._personality_rewrite(llm_response)
+
+            # Replace undesirable text
+            for target, replacement_obj in self.ai_bot.profile.regex_replacements.items():
+                if isinstance(replacement_obj, list):
+                    replacement = random.choice(replacement_obj)
+                else:
+                    replacement = replacement_obj
+                llm_response = re.sub(target, replacement, llm_response)
+            self.logger.verbose(f"Sanitized text, result: {llm_response}", category="REGEX REPLACEMENT")
+
+            return AIResponder.Response(
+                text=llm_response,
+                attachment_description=prompt_data.attachment_description,
+                tool_call_result=None,
+                failed=False,
+                verbose_log_output=self.logger.text
+            )
+        except Exception as e:
+            error_message = f"Error while generating response: {str(e)}"
+            self.logger.verbose(error_message, category="ERROR")
+            return AIResponder.Response(
+                text=error_message,
+                attachment_description=None,
+                tool_call_result=None,
+                failed=True,
+                verbose_log_output=self.logger.text
+            )
 
     async def _format_full_prompt(
             self, 

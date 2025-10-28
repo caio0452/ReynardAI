@@ -125,12 +125,12 @@ class AttachmentDescribeStep(ResponseStep):
         prompt = self._get_prompt(NAME).replace(
             {"attachment_url": attachment_url}
         )
+        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}")
         response = await self.ai_bot.send_llm_request(
             provider_name=NAME,
             prompt=prompt,
             parameter_set_name=NAME
         )
-        self.logger.verbose(f"Prompt: {json.dumps(prompt.messages, indent=4)}")
         return response.message.content
     
     def get_name(self) -> str | None:

@@ -1,7 +1,6 @@
 import time
 import json
 import base64
-import aiohttp
 import requests
 
 from ..bot_data.ai_bot import AIBot
@@ -107,7 +106,7 @@ class HistorySummarizerStep(ResponseStep):
     
 class AttachmentDescribeStep(ResponseStep):
     def __init__(self, *, logger: SimpleDebugLogger, attachment_urls: list[str]):
-        super().__init__(logger)
+        super().__init__(logger=logger)
         self.attachment_urls = attachment_urls
 
     async def _run(self):
@@ -120,20 +119,33 @@ class AttachmentDescribeStep(ResponseStep):
             return "I cannot view multiple attachments, please attach at most one."
         
         attachment_url = attachment_urls[0]
-        ctype = requests.head(attachment_url).headers.get("Content-Type", "").lower()
+        try:
+            response = requests.get(attachment_url, timeout=10)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            self.logger.verbose(f"Failed to download attachment from {attachment_url}: {e}", category=NAME)
+            return "Failed to download image, so you are unable to see it. Please warn the user about this"
+            
+        ctype = response.headers.get("Content-Type", "").lower()
         if ctype not in ["image/png", "image/jpeg"]:
             self.logger.verbose(f"Unsupported content type '{ctype}', ignoring attachment description for {attachment_url}", category=NAME)
+            return "Unsupported image format, so you are unable to see it. Please warn the user about this"
+        
+        image_data = response.content
+        base64_data = base64.b64encode(image_data).decode('utf-8')
+        data_url = f"data:{ctype};base64,{base64_data}"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(attachment_url) as resp:
-                if resp.status != 200:
-                    raise RuntimeError(f"Failed to download image: HTTP {resp.status}")
-                data = await resp.read()
-                encoded_image = base64.b64encode(data).decode("utf-8")
-
-        # You can now use or return the Base64 data
-        return encoded_image
-
+        prompt = self._get_prompt(NAME).replace(
+            {"attachment_url": data_url}
+        )
+        self.logger.verbose(f"Prompt (messages truncated): {json.dumps(prompt.messages, indent=4)}")
+        response = await self.ai_bot.send_llm_request(
+            provider_name=NAME,
+            prompt=prompt,
+            parameter_set_name=NAME
+        )
+        return response.message.content
+    
     def get_name(self) -> str | None:
         return "attachment describer"
 

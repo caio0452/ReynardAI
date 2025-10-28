@@ -17,10 +17,13 @@ import logging
 import datetime
 
 class AIResponder:
+    class BlockedByModerationException(Exception):
+        pass
+
     @dataclass
     class Response:
-        text: str
-        failed: bool
+        ai_text: str | None
+        fail_exception: Exception | None
         attachment_description: str | None
         tool_call_result: str | None
         verbose_log_output: str
@@ -161,9 +164,9 @@ class AIResponder:
                 if moderation_result.flagged:
                     await self.ai_bot.short_term_memory.remove(self.last_msg_snapshot.message_id)
                     return AIResponder.Response(
-                        text="This message has been flagged by moderation.", # TODO: lang
+                        ai_text=None, # TODO: lang
                         attachment_description=prompt_data.attachment_description,
-                        failed=True,
+                        fail_exception=AIResponder.BlockedByModerationException("Message blocked by moderation"),
                         tool_call_result=None,
                         verbose_log_output=self.logger.text
                     )
@@ -225,20 +228,20 @@ class AIResponder:
             self.logger.verbose(f"Sanitized text, result: {llm_response}", category="REGEX REPLACEMENT")
 
             return AIResponder.Response(
-                text=llm_response,
+                ai_text=llm_response,
                 attachment_description=prompt_data.attachment_description,
                 tool_call_result=None,
-                failed=False,
+                fail_exception=None,
                 verbose_log_output=self.logger.text
             )
         except Exception as e:
             error_message = f"Error while generating response: {str(e)}"
             self.logger.verbose(error_message, category="ERROR")
             return AIResponder.Response(
-                text=error_message,
+                ai_text=None,
                 attachment_description=None,
                 tool_call_result=None,
-                failed=True,
+                fail_exception=e,
                 verbose_log_output=self.logger.text
             )
 

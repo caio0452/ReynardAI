@@ -1,4 +1,5 @@
 import abc
+from re import error
 import traceback
 
 from typing import Any
@@ -50,12 +51,23 @@ class BaseChatHandler(abc.ABC):
 
         responder = AIResponder(self.ai_bot, event.chatroom, event.snapshot, verbose=verbose)
         resp = await responder.create_response()
-        sent_message_snapshot = await self._send_response(resp.text, event, typing_context)
-        await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
-        await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
-        if self.ai_bot.medium_term_memory is not None:
-            await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
-        ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
+        
+        if resp.fail_exception is None:
+            assert resp.ai_text is not None
+            sent_message_snapshot = await self._send_response(resp.ai_text, event, typing_context)
+            await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
+            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
+
+            if self.ai_bot.medium_term_memory is not None:
+                await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
+                ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
+        else:
+            log_id = event.snapshot.message_id
+            sent_message_snapshot = await self._send_reply(
+                f"Error while generating response. The ID for this log is {log_id}: ```{str(error)[:1000]}```", 
+                event
+            )
+            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
 
     async def handle_log_request(self, content: str, original_event: MessageSnapshotEvent):
         try:

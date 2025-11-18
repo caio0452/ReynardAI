@@ -23,23 +23,24 @@ class OpenAIModerator(ContentModerator):
 
 # TODO: should be provider (e.g. OpenAI) agnostic
 class EmbeddingsClient:
-    def __init__(self, provider: ProviderData):
+    def __init__(self, provider: ProviderData, model_name: str):
         self.client = openai.AsyncOpenAI(
             api_key=provider.api_key, 
             base_url=provider.api_base
         )
+        self.model_name = model_name
 
-    async def vectorize(self, input: str | list[str], model="text-embedding-3-large") -> list[float] | list[list[float]]:
+    async def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
         if isinstance(input, str):
             response = await self.client.embeddings.create(
                 input=input,
-                model=model
+                model=self.model_name
             )
             return response.data[0].embedding
         elif isinstance(input, list):
             response = await self.client.embeddings.create(
                 input=input,
-                model=model
+                model=self.model_name
             )
             return [e.embedding for e in response.data]
 

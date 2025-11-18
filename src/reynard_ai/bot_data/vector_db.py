@@ -73,8 +73,8 @@ class VectorDatabase:
                 combined = self.data + str(self.metadata)
                 self.entry_id = int(hashlib.sha256(combined.encode()).hexdigest(), 16) & 0x7FFFFFFF
         
-    def __init__(self, provider: ProviderData, path: str):
-        self.vectorizer = EmbeddingsClient(provider)
+    def __init__(self, vectorizer: EmbeddingsClient, path: str):
+        self.vectorizer = vectorizer
         self.async_client = AsyncMilvusClient(path)
         self.sync_client = MilvusClient(path)
 

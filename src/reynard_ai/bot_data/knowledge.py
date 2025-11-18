@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import logging
 
-from ..ai_apis.providers import ProviderData
+from ..ai_apis.client import EmbeddingsClient
 from ..chat.message_snapshot import MessageSnapshot
 from ..bot_data.vector_db import VectorDatabase, VectorDatabaseConnection
 
@@ -15,9 +15,9 @@ class LongTermMemoryIndex:
         self._db_conn = _db_conn
 
     @staticmethod
-    async def from_provider(provider: ProviderData) -> "LongTermMemoryIndex":
+    async def from_vectorizer(vectorizer: EmbeddingsClient) -> "LongTermMemoryIndex":
         memories_db_path = os.path.join(os.getcwd(), 'brain_content', 'memories', 'memories.db')
-        vector_db: VectorDatabase = VectorDatabase(provider, memories_db_path)
+        vector_db: VectorDatabase = VectorDatabase(vectorizer, memories_db_path)
         db_conn = await vector_db.connect()
         return LongTermMemoryIndex(db_conn)
 
@@ -63,9 +63,9 @@ class KnowledgeIndex:
         self._db_conn = _db_conn
 
     @staticmethod
-    async def from_provider(provider: ProviderData) -> "KnowledgeIndex":
+    async def from_vectorizer(vectorizer: EmbeddingsClient) -> "KnowledgeIndex":
         knowledge_db_path = os.path.join(os.getcwd(), 'brain_content', 'knowledge', 'knowledge.db')
-        vector_db: VectorDatabase = VectorDatabase(provider, knowledge_db_path)
+        vector_db: VectorDatabase = VectorDatabase(vectorizer, knowledge_db_path)
         db_conn = await vector_db.connect()
         return KnowledgeIndex(db_conn)
     

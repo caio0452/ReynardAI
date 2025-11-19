@@ -1,12 +1,13 @@
 from abc import ABC
 
-
 from ..ai_apis import providers
+from discord.ext import commands
 from .bot_profile import Profile
 from ..ai_apis.api_types import Prompt
 from ..ai_apis.client import LLMClient
 from ..events.event_bus import AsyncEventBus
 from ..chat.base_chat_handler import BaseChatHandler
+from ..chat.discord_events_bridge import DiscordBridge
 from ..chat.discord_chat_handler import DiscordChatHandler
 from ..bot_data.knowledge import KnowledgeIndex, LongTermMemoryIndex
 from ..chat.message_history import MessageSnapshotHistory, SynchronizedMessageHistory
@@ -55,10 +56,16 @@ class ReynardChatBot():
         self.event_bus.start()
 
     @classmethod
-    def discord(cls, bot_data: ReynardAIBotData):
+    async def create_discord_bot(cls, discord_bot: commands.Bot, ai_bot_data: ReynardAIBotData):
         event_bus = AsyncEventBus()
         chat_handler = DiscordChatHandler(
             bus=event_bus,
-            ai_bot=bot_data
+            ai_bot=ai_bot_data
         )
-        return cls(bot_data, chat_handler)
+        discord_bridge = DiscordBridge(
+            discord_bot, 
+            bus=event_bus, 
+            known_chatrooms=[]
+        )
+        await discord_bot.add_cog(discord_bridge)
+        return cls(ai_bot_data, chat_handler)

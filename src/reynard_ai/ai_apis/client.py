@@ -23,12 +23,13 @@ class OpenAIModerator(ContentModerator):
 
 # TODO: should be provider (e.g. OpenAI) agnostic
 class EmbeddingsClient:
-    def __init__(self, provider: ProviderData, model_name: str):
+    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):
         self.client = openai.AsyncOpenAI(
             api_key=provider.api_key, 
             base_url=provider.api_base
         )
         self.model_name = model_name
+        self.embedding_dim = embedding_dim
 
     async def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
         if isinstance(input, str):
@@ -36,34 +37,50 @@ class EmbeddingsClient:
                 input=input,
                 model=self.model_name
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            if len(embedding) != self.embedding_dim:
+                raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
+            return embedding
         elif isinstance(input, list):
             response = await self.client.embeddings.create(
                 input=input,
                 model=self.model_name
             )
-            return [e.embedding for e in response.data]
+            result = [e.embedding for e in response.data]
+            for embedding in result:
+                if len(embedding) != self.embedding_dim:
+                    raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
+            return result
 
 class SyncEmbeddingsClient:
-    def __init__(self, provider: ProviderData):
+    def __init__(self, provider: ProviderData, model_name: str = "text-embedding-3-large", embedding_dim: int = 3072):
         self.openai_client = openai.OpenAI(
-            api_key=provider.api_key, 
+            api_key=provider.api_key,
             base_url=provider.api_base
         )
+        self.model_name = model_name
+        self.embedding_dim = embedding_dim
 
-    def vectorize(self, input: str | list[str], model="text-embedding-3-large") -> list[float] | list[list[float]]:
+    def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
         if isinstance(input, str):
             response = self.openai_client.embeddings.create(
                 input=input,
-                model=model
+                model=self.model_name
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            if len(embedding) != self.embedding_dim:
+                raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
+            return embedding
         elif isinstance(input, list):
             response = self.openai_client.embeddings.create(
                 input=input,
-                model=model
+                model=self.model_name
             )
-            return [e.embedding for e in response.data]
+            result = [e.embedding for e in response.data]
+            for embedding in result:
+                if len(embedding) != self.embedding_dim:
+                    raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
+            return result
 
 class LLMClient:
     def __init__(self, client: openai.AsyncClient):

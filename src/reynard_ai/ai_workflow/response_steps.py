@@ -3,7 +3,7 @@ import json
 import base64
 import requests
 
-from ..bot_data.ai_bot import AIBot
+from ..bot_data.ai_bot import ReynardAIBotData
 from abc import ABC, abstractmethod
 from ..ai_workflow.response_logs import SimpleDebugLogger
 
@@ -13,8 +13,8 @@ class ResponseStep(ABC):
         self.elapsed_ms: float | None = None
         self.logger = logger
     
-    async def execute(self, ai_bot: AIBot, message: str) -> str | None:
-        self.ai_bot: AIBot = ai_bot
+    async def execute(self, ai_bot: ReynardAIBotData, message: str) -> str | None:
+        self.ai_bot: ReynardAIBotData = ai_bot
         self.message = message
         start = time.perf_counter()
         ret = await self._run()

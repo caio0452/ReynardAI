@@ -2,7 +2,7 @@ import abc
 import traceback
 
 from typing import Any
-from ..bot_data.ai_bot import AIBot
+from ..bot_data.ai_bot import ReynardAIBotData
 from ..events.event_bus import AsyncEventBus
 from .message_snapshot import MessageSnapshot
 from ..util.rate_limits import RateLimiter, RateLimit
@@ -11,7 +11,7 @@ from ..ai_workflow.ai_responder import AIResponder
 from ..ai_workflow.response_logs import ResponseLogsManager, SimpleDebugLogger
 
 class BaseChatHandler(abc.ABC):
-    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot: AIBot):
+    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], ai_bot: ReynardAIBotData):
         self.rate_limiter = RateLimiter(
             RateLimit(n_messages=3, seconds=10),
             RateLimit(n_messages=10, seconds=60),

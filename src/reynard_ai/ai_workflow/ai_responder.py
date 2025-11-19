@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from ..bot_data.ai_bot import AIBot
+from ..bot_data.ai_bot import ReynardAIBotData
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .response_logs import SimpleDebugLogger
@@ -28,7 +28,7 @@ class AIResponder:
         tool_call_result: str | None
         verbose_log_output: str
 
-    def __init__(self, ai_bot: AIBot, chatroom: Chatroom, last_msg_snapshot: MessageSnapshot, verbose: bool=False):
+    def __init__(self, ai_bot: ReynardAIBotData, chatroom: Chatroom, last_msg_snapshot: MessageSnapshot, verbose: bool=False):
         self.verbose = verbose
         self.last_msg_snapshot = last_msg_snapshot
         self.ai_bot = ai_bot

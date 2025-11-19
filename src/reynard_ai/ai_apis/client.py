@@ -53,7 +53,7 @@ class EmbeddingsClient:
             return result
 
 class SyncEmbeddingsClient:
-    def __init__(self, provider: ProviderData, model_name: str = "text-embedding-3-large", embedding_dim: int = 3072):
+    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):
         self.openai_client = openai.OpenAI(
             api_key=provider.api_key,
             base_url=provider.api_base

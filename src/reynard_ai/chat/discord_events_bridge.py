@@ -9,6 +9,21 @@ from .message_snapshot import MessageSnapshot
 from ..events.message_events import MessageSnapshotEvent
 from .message_history import SynchronizedMessageHistory
 
+class ChatPlatformBridge(ABC):
+    def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], known_chatrooms: list[Chatroom], backend_name: str):
+        self.bus = bus
+        self.known_chatrooms = known_chatrooms
+        self.backend_name = backend_name
+
+    async def publish_event(self, snapshot: MessageSnapshot, raw_msg_object: Any, chatroom: Chatroom):
+        event = MessageSnapshotEvent(
+            backend=self.backend_name,
+            snapshot=snapshot,
+            raw_msg_object=raw_msg_object,
+            chatroom=chatroom
+        )
+        await self.bus.publish(event)
+        
 class MessageToChatroomMapper(ABC):
     def __init__(self, known_chatrooms: list[Chatroom]):
         self.known_chatrooms = known_chatrooms
@@ -44,26 +59,25 @@ class DiscordMessageToChatroomMapper(MessageToChatroomMapper):
         else:
             return get_known_chatroom_from_id(discord_message.guild.id, create_if_absent=create_if_absent)
 
-class DiscordBridge(commands.Cog):
+
+class DiscordBridge(ChatPlatformBridge, commands.Cog):
     def __init__(self, bot: commands.Bot, bus: AsyncEventBus[MessageSnapshotEvent], known_chatrooms: list[Chatroom]):
+        ChatPlatformBridge.__init__(self, bus, known_chatrooms, backend_name="discord")
         self.bot = bot
-        self.bus = bus
         self._chatroom_mapper = DiscordMessageToChatroomMapper(known_chatrooms)
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        # Don't fire events for bots
         if message.author.bot:
             return
 
-        snapshot = await MessageSnapshot.of_discord_message(message)
         chatroom = self._chatroom_mapper.find_chatroom(message)
-
         if chatroom is None:
-            raise RuntimeError("Cannot find chatroom to assign to message: ", message)
-        
-        await self.bus.publish(
-            MessageSnapshotEvent(
-                backend="discord", snapshot=snapshot, raw_msg_object=message, chatroom=chatroom
-            )
+            raise RuntimeError(f"Cannot find chatroom to assign to message: {message}")
+
+        snapshot = await MessageSnapshot.of_discord_message(message)
+        await self.publish_event(
+            snapshot=snapshot,
+            raw_msg_object=message,
+            chatroom=chatroom
         )

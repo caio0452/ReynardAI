@@ -52,6 +52,7 @@ class ReynardChatBot():
         self.bot_data = bot_data
         self.event_bus = AsyncEventBus()
         self.chat_handler = chat_handler 
+        self.event_bus.start()
 
     @classmethod
     def discord(cls, bot_data: ReynardAIBotData):

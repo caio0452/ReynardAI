@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from ..bot_data.ai_bot import ReynardAIBotData
 from ..chat.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .response_logs import SimpleDebugLogger
+from ..bot_data.ai_bot import ReynardAIBotData
 from ..ai_workflow.moderation import LLMModerator
 from ..chat.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
@@ -40,25 +40,25 @@ class AIResponder:
         for provider_name, provider_data in ai_bot.provider_store.providers.items():
             self.clients[provider_name] = LLMClient.from_provider(provider_data)
     
-    async def _rephrase_user_query(self) -> str:
-        user_query = await UserQueryRephraseStep(self.logger).execute(self.ai_bot, self.last_msg_snapshot.text)
+    async def _rephrase_user_query(self, message_history: MessageSnapshotHistory) -> str:
+        user_query = await UserQueryRephraseStep(message_history, self.logger).execute(self.ai_bot, self.last_msg_snapshot.text)
         if user_query is None:
             raise RuntimeError("Rephraser step returned empty response")
         return user_query
     
-    async def _read_attachments(self, attachment_urls: list[str]) -> str | None:
-        attachments_reader = AttachmentDescribeStep(logger=self.logger, attachment_urls=attachment_urls)
+    async def _read_attachments(self, message_history: MessageSnapshotHistory, attachment_urls: list[str]) -> str | None:
+        attachments_reader = AttachmentDescribeStep(message_history=message_history, logger=self.logger, attachment_urls=attachment_urls)
         return await attachments_reader.execute(self.ai_bot, self.last_msg_snapshot.text)
     
-    async def _get_medium_term_summary(self) -> str:
-        summary =  await HistorySummarizerStep(self.logger).execute(
+    async def _get_medium_term_summary(self, message_history: MessageSnapshotHistory) -> str:
+        summary =  await HistorySummarizerStep(message_history, self.logger).execute(
             self.ai_bot, self.last_msg_snapshot.text) 
         if summary is None:
             raise RuntimeError("History summarizer step returned empty response")
         return summary
         
-    async def _select_relevant_info(self, user_query: str) -> str:
-        info_selector = RelevantInfoSelectStep(logger=self.logger, user_query=user_query)
+    async def _select_relevant_info(self, message_history: MessageSnapshotHistory,user_query: str) -> str:
+        info_selector = RelevantInfoSelectStep(message_history=message_history, logger=self.logger, user_query=user_query)
         knowledge = await info_selector.execute(self.ai_bot, self.last_msg_snapshot.text)
         if knowledge is None:
             raise RuntimeError("Knowledge retrieval step returned empty response")
@@ -71,8 +71,8 @@ class AIResponder:
                 old_memories += hit.entity["text"] + "\n"
         return old_memories
     
-    async def _personality_rewrite(self, llm_response: str) -> str:
-        personality_rewriter = PersonalityRewriteStep(self.logger)
+    async def _personality_rewrite(self, message_history: MessageSnapshotHistory, llm_response: str) -> str:
+        personality_rewriter = PersonalityRewriteStep(message_history=message_history, logger=self.logger)
         personality_rewrite = await personality_rewriter.execute(self.ai_bot, llm_response) 
         if personality_rewrite is None:
             raise RuntimeError("Personality rewrite step returned empty response")
@@ -85,7 +85,7 @@ class AIResponder:
         old_memories: str | None
         medium_term_summary: str | None
 
-    async def _gather_prompt_data(self)-> PromptData:
+    async def _gather_prompt_data(self, message_history: MessageSnapshotHistory)-> PromptData:
         user_query: str = self.last_msg_snapshot.text
 
         # Read attachments
@@ -93,6 +93,7 @@ class AIResponder:
         if self.ai_bot.profile.options.enable_image_viewing and self.last_msg_snapshot.attachment_urls:
             attachment_task = asyncio.create_task(
                 self._read_attachments(
+                    message_history,
                     self.last_msg_snapshot.attachment_urls
                 )
             )
@@ -101,8 +102,8 @@ class AIResponder:
         knowledge_task = None
         if self.ai_bot.profile.options.enable_knowledge_retrieval:
             async def _fetch_knowledge():
-                rephrased_query = await self._rephrase_user_query()
-                return await self._select_relevant_info(rephrased_query)
+                rephrased_query = await self._rephrase_user_query(message_history)
+                return await self._select_relevant_info(message_history, rephrased_query)
             knowledge_task = asyncio.create_task(_fetch_knowledge())
 
         # Retrieve old memories
@@ -116,7 +117,7 @@ class AIResponder:
         medium_term_task = None
         if self.ai_bot.profile.memory_settings.enable_medium_term_memory:
             medium_term_task = asyncio.create_task(
-                self._get_medium_term_summary()
+                self._get_medium_term_summary(message_history)
             )
 
         # Dispatch all tasks
@@ -156,7 +157,8 @@ class AIResponder:
     async def create_response(self) -> Response:
         try:
             MAIN_CLIENT_NAME = "PERSONALITY"
-            prompt_data = await self._gather_prompt_data()
+            message_history = self.ai_bot.short_term_memory.backing_history.clone()
+            prompt_data = await self._gather_prompt_data(message_history)
 
             # Moderate
             if self.ai_bot.profile.options.enable_moderation:
@@ -172,6 +174,7 @@ class AIResponder:
                     )
 
             # Build full prompt from info
+            last_msg_nick = self.last_msg_snapshot.nick
             full_prompt = await self._format_full_prompt(
                 memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
                 user_nick=self.last_msg_snapshot.nick,
@@ -216,7 +219,7 @@ class AIResponder:
 
             # Rewrite in-character
             if self.ai_bot.profile.options.enable_personality_rewrite:
-                llm_response = await self._personality_rewrite(llm_response)
+                llm_response = await self._personality_rewrite(message_history, llm_response)
 
             # Replace undesirable text
             for target, replacement_obj in self.ai_bot.profile.regex_replacements.items():

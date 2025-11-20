@@ -3,15 +3,17 @@ import json
 import base64
 import requests
 
-from ..bot_data.ai_bot import ReynardAIBotData
 from abc import ABC, abstractmethod
+from ..bot_data.ai_bot import ReynardAIBotData
+from ..chat.message_history import MessageSnapshotHistory
 from ..ai_workflow.response_logs import SimpleDebugLogger
 
 class ResponseStep(ABC):
-    def __init__(self, logger: SimpleDebugLogger):
+    def __init__(self, message_history: MessageSnapshotHistory, logger: SimpleDebugLogger):
         self.finished = False
         self.elapsed_ms: float | None = None
         self.logger = logger
+        self.message_history = message_history
     
     async def execute(self, ai_bot: ReynardAIBotData, message: str) -> str | None:
         self.ai_bot: ReynardAIBotData = ai_bot
@@ -60,7 +62,7 @@ class PersonalityRewriteStep(ResponseStep):
 class UserQueryRephraseStep(ResponseStep):
     async def _run(self):
         NAME = "USER_QUERY_REPHRASE"
-        recent_history_list = self.ai_bot.short_term_memory.backing_history.as_list()
+        recent_history_list = self.message_history.as_list()
         user_prompt_str = "\n".join(
             [memorized_message.text for memorized_message in recent_history_list]
         )
@@ -105,8 +107,8 @@ class HistorySummarizerStep(ResponseStep):
         return "history summarizer"
     
 class AttachmentDescribeStep(ResponseStep):
-    def __init__(self, *, logger: SimpleDebugLogger, attachment_urls: list[str]):
-        super().__init__(logger=logger)
+    def __init__(self, *, message_history: MessageSnapshotHistory, logger: SimpleDebugLogger, attachment_urls: list[str]):
+        super().__init__(message_history=message_history, logger=logger)
         self.attachment_urls = attachment_urls
 
     async def _run(self):
@@ -150,8 +152,8 @@ class AttachmentDescribeStep(ResponseStep):
         return "attachment describer"
 
 class RelevantInfoSelectStep(ResponseStep):
-    def __init__(self, *, logger: SimpleDebugLogger, user_query: str):
-        super().__init__(logger)
+    def __init__(self, *, message_history: MessageSnapshotHistory, logger: SimpleDebugLogger, user_query: str):
+        super().__init__(message_history=message_history, logger=logger)
         self.user_query = user_query
 
     async def _run(self):

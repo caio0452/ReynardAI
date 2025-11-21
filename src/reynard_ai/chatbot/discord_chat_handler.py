@@ -56,22 +56,21 @@ class DiscordChatHandler(BaseChatHandler):
             return chunk.strip('\r\n') if self.ai_bot.profile.options.remove_trailing_newline else chunk
 
         raw_chunks = message_processing_util.split_by_length(text, max_chunk_length)
-        code_balanced_chunks = [
+        full_chunks = [
             f"{strip_newline(chunk)}{disclaimer}"
-            for chunk in message_processing_util.balance_code_fences(raw_chunks)
+            for chunk in raw_chunks
         ]
 
         ping = not self.ai_bot.profile.options.only_ping_on_response_finish
         if typing_placeholder:
             if isinstance(typing_placeholder, discord.Message):
                 typing_msg = typing_placeholder
-                last_msg = await typing_msg.edit(content=code_balanced_chunks[0])
+                last_msg = await typing_msg.edit(content=full_chunks[0])
             else:
                 raise RuntimeError(f"typing_placeholder is not a Discord message, it's {type(typing_placeholder)}")
         else:
-            last_msg = await self._get_discord_msg(original_event).reply(code_balanced_chunks[0])
-
-        for chunk in code_balanced_chunks[1:]:
+            last_msg = await self._get_discord_msg(original_event).reply(full_chunks[0])
+        for chunk in full_chunks[1:]:
             last_msg = await last_msg.reply(content=chunk, silent=not ping)
 
         return MessageSnapshot(

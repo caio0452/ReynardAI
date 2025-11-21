@@ -26,5 +26,6 @@ class ReynardChatBot():
             bus=event_bus, 
             known_chatrooms=[]
         )
+        event_bus.start()
         await discord_bot.add_cog(discord_bridge)
         return cls(ai_bot_data, chat_handler)

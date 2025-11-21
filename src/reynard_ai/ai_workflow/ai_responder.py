@@ -176,7 +176,7 @@ class AIResponder:
             # Build full prompt from info
             last_msg_nick = self.last_msg_snapshot.nick
             full_prompt = await self._format_full_prompt(
-                memory_snapshot=self.ai_bot.short_term_memory.backing_history.clone(),
+                memory_snapshot=message_history,
                 user_nick=self.last_msg_snapshot.nick,
                 attachment_description=prompt_data.attachment_description,
                 relevant_info=prompt_data.knowledge,

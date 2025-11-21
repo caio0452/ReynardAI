@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from reynard_ai.chat.chatroom import Chatroom
+from reynard_ai.chat_base.chatroom import Chatroom
 from ..chat_base.message_snapshot import MessageSnapshot
 
 @dataclass(slots=True)

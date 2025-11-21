@@ -22,7 +22,7 @@ class ReynardAIBotData(AbstractReynardAIBotData):
                  account_id: int,
                  memory_length: int = 50
                 ):
-        super().__init__(self.profile.options.botname, MessageSnapshotHistory(memory_length=memory_length))
+        super().__init__(profile.options.botname, MessageSnapshotHistory(memory_length=memory_length))
         self.profile = profile
         self.provider_store = provider_store
         self.account_id = account_id

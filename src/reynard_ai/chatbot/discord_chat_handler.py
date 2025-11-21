@@ -3,9 +3,9 @@ import discord
 import datetime
 from typing import Any
 
-from . import message_processing_util
-from .message_snapshot import MessageSnapshot
-from .base_chat_handler import BaseChatHandler
+from ..chat_base import message_processing_util
+from ..chat_base.message_snapshot import MessageSnapshot
+from ..chat_base.base_chat_handler import BaseChatHandler
 from ..events.message_events import MessageSnapshotEvent
 
 class DiscordChatHandler(BaseChatHandler):

@@ -1,5 +1,4 @@
 import abc
-import traceback
 
 from typing import Any
 from ..bot_data.ai_bot import ReynardAIBotData

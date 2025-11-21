@@ -3,11 +3,11 @@ from typing import Any
 from discord.ext import commands
 from abc import ABC, abstractmethod
 
-from .chatroom import Chatroom
+from ..chat_base.chatroom import Chatroom
 from ..events.event_bus import AsyncEventBus
-from .message_snapshot import MessageSnapshot
+from ..chat_base.message_snapshot import MessageSnapshot
 from ..events.message_events import MessageSnapshotEvent
-from .message_history import SynchronizedMessageHistory
+from ..chat_base.message_history import SynchronizedMessageHistory
 
 class ChatPlatformBridge(ABC):
     def __init__(self, bus: AsyncEventBus[MessageSnapshotEvent], known_chatrooms: list[Chatroom], backend_name: str):
@@ -60,7 +60,10 @@ class DiscordMessageToChatroomMapper(MessageToChatroomMapper):
             return get_known_chatroom_from_id(discord_message.guild.id, create_if_absent=create_if_absent)
 
 
-class DiscordBridge(ChatPlatformBridge, commands.Cog):
+class CogBridgeCompositeMeta(type(commands.Cog), type(ChatPlatformBridge)):
+    pass
+
+class DiscordBridge(ChatPlatformBridge, commands.Cog, metaclass=CogBridgeCompositeMeta):
     def __init__(self, bot: commands.Bot, bus: AsyncEventBus[MessageSnapshotEvent], known_chatrooms: list[Chatroom]):
         ChatPlatformBridge.__init__(self, bus, known_chatrooms, backend_name="discord")
         self.bot = bot

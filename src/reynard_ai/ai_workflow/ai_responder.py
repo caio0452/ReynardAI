@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from ..chat.chatroom import Chatroom
+from ..chat_base.chatroom import Chatroom
 from ..ai_apis.client import LLMClient
 from .response_logs import SimpleDebugLogger
 from ..bot_data.ai_bot import ReynardAIBotData
 from ..ai_workflow.moderation import LLMModerator
-from ..chat.message_snapshot import MessageSnapshot
+from ..chat_base.message_snapshot import MessageSnapshot
 from ..ai_apis.api_types import LLMRequestParams, Prompt
-from ..chat.message_history import MessageSnapshotHistory
+from ..chat_base.message_history import MessageSnapshotHistory
 from .response_steps import HistorySummarizerStep, PersonalityRewriteStep, RelevantInfoSelectStep, UserQueryRephraseStep, AttachmentDescribeStep
 
 import re

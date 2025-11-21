@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from ..chat.message_history import SynchronizedMessageHistory
+from ..chat_base.message_history import SynchronizedMessageHistory
 
 @dataclass
 class Chatroom:

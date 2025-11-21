@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from reynard_ai.chat.chatroom import Chatroom
-from ..chat.message_snapshot import MessageSnapshot
+from ..chat_base.message_snapshot import MessageSnapshot
 
 @dataclass(slots=True)
 class MessageSnapshotEvent:

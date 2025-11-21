@@ -7,7 +7,7 @@ import hashlib
 import logging
 
 from ..ai_apis.client import EmbeddingsClient
-from ..chat.message_snapshot import MessageSnapshot
+from ..chat_base.message_snapshot import MessageSnapshot
 from ..bot_data.vector_db import VectorDatabase, VectorDatabaseConnection
 
 class LongTermMemoryIndex:

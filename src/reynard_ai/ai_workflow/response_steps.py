@@ -5,7 +5,7 @@ import requests
 
 from abc import ABC, abstractmethod
 from ..bot_data.ai_bot import ReynardAIBotData
-from ..chat.message_history import MessageSnapshotHistory
+from ..chat_base.message_history import MessageSnapshotHistory
 from ..ai_workflow.response_logs import SimpleDebugLogger
 
 class ResponseStep(ABC):

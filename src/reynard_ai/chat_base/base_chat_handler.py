@@ -60,7 +60,8 @@ class BaseChatHandler(abc.ABC):
 
             if self.ai_bot.medium_term_memory is not None:
                 await self.ai_bot.medium_term_memory.mark_finalized(user_msg_snapshot.message_id)
-                ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
+                
+            ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
         else:
             log_id = event.snapshot.message_id
             sent_message_snapshot = await self._send_reply(

@@ -54,13 +54,11 @@ class BaseChatHandler(abc.ABC):
             sent_message_snapshot = await self._send_response(resp.ai_text, event, typing_context)
             await self.memorize_short_term(sent_message_snapshot, pending=False, add_after_id=user_msg_snapshot.message_id)
             await self.ai_bot.short_term_memory.mark_finalized(user_msg_snapshot.message_id)
+
             for to_memorize in [sent_message_snapshot, user_msg_snapshot]:
                 await self.memorize_medium_term(to_memorize, pending=False)
                 await self.memorize_long_term(to_memorize)
 
-            if self.ai_bot.medium_term_memory is not None:
-                await self.ai_bot.medium_term_memory.mark_finalized(user_msg_snapshot.message_id)
-                
             ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
         else:
             log_id = event.snapshot.message_id

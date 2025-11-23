@@ -52,25 +52,25 @@ class MessageSnapshotHistory:
 class SynchronizedMessageHistory:
     def __init__(self, *, max_length: int, initial_history: MessageSnapshotHistory | None = None):
         if initial_history is None:
-            self.backing_history = MessageSnapshotHistory()
+            self._backing_history = MessageSnapshotHistory()
         else:
-            self.backing_history = initial_history
+            self._backing_history = initial_history
         self._pending_message_ids: set[int] = set()
         self._lock = asyncio.Lock()
 
     async def add(self, message: MessageSnapshot, *, pending=False):
         async with self._lock:
-            await self.backing_history.add(message)
+            await self._backing_history.add(message)
             if pending:
                 self._pending_message_ids.add(message.message_id)
 
     async def remove(self, message_id: int):
         async with self._lock:
-            await self.backing_history.remove_id(message_id)
+            await self._backing_history.remove_id(message_id)
 
     async def add_after(self, id: int, message: MessageSnapshot, *, pending=False):
         async with self._lock:
-            await self.backing_history.add_after(id, message)
+            await self._backing_history.add_after(id, message)
             if pending:
                 self._pending_message_ids.add(message.message_id)
 
@@ -88,14 +88,14 @@ class SynchronizedMessageHistory:
         ret_msgs = []
 
         async with self._lock:
-            for msg in self.backing_history._memory:
+            for msg in self._backing_history._memory:
                 if not self.is_pending(msg.message_id):
                     ret_msgs.append(msg)
             return MessageSnapshotHistory(ret_msgs)
         
     def __str__(self) -> str:
         ret = ""
-        for msg in self.backing_history._memory:
+        for msg in self._backing_history._memory:
             id = msg.message_id
             pending_str = "" if not self.is_pending(id) else "(PENDING)"
             bot_str = "" if not msg.is_bot else "(BOT)"

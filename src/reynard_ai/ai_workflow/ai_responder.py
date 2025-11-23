@@ -157,7 +157,8 @@ class AIResponder:
     async def create_response(self) -> Response:
         try:
             MAIN_CLIENT_NAME = "PERSONALITY"
-            message_history = self.ai_bot.short_term_memory.backing_history.clone()
+            message_history = await self.ai_bot.short_term_memory.get_finalized_message_history()
+            await message_history.add(self.last_msg_snapshot)
             prompt_data = await self._gather_prompt_data(message_history)
 
             # Moderate

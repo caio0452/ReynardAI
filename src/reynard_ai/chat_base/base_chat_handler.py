@@ -42,22 +42,25 @@ class BaseChatHandler(abc.ABC):
             await self.respond_with_llm(event, verbose=verbose)
 
     async def respond_with_llm(self, event: MessageSnapshotEvent, *, verbose: bool = False):
-        user_snapshot = event.snapshot
-        await self.memorize_message(user_snapshot, pending=True, add_after_id=None)
+        user_msg_snapshot = event.snapshot
+        await self.memorize_short_term(user_msg_snapshot, pending=True, add_after_id=None)
 
         typing_context = await self._send_typing_indicator(event)
-
         responder = AIResponder(self.ai_bot, event.chatroom, event.snapshot, verbose=verbose)
         resp = await responder.create_response()
         
         if resp.fail_exception is None:
             assert resp.ai_text is not None
             sent_message_snapshot = await self._send_response(resp.ai_text, event, typing_context)
-            await self.memorize_message(sent_message_snapshot, pending=False, add_after_id=user_snapshot.message_id)
-            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
+            await self.memorize_short_term(sent_message_snapshot, pending=False, add_after_id=user_msg_snapshot.message_id)
+            
+            for to_memorize in [sent_message_snapshot, user_msg_snapshot]:
+                await self.memorize_medium_term(to_memorize, pending=False)
+                await self.memorize_long_term(to_memorize)
+                await self.ai_bot.short_term_memory.mark_finalized(to_memorize.message_id)
 
             if self.ai_bot.medium_term_memory is not None:
-                await self.ai_bot.medium_term_memory.mark_finalized(user_snapshot.message_id)
+                await self.ai_bot.medium_term_memory.mark_finalized(user_msg_snapshot.message_id)
                 ResponseLogsManager.instance().store_log(sent_message_snapshot.message_id, resp.verbose_log_output)
         else:
             log_id = event.snapshot.message_id
@@ -66,7 +69,7 @@ class BaseChatHandler(abc.ABC):
                 event
             )
             ResponseLogsManager.instance().store_log(log_id, resp.verbose_log_output)
-            await self.ai_bot.short_term_memory.mark_finalized(user_snapshot.message_id)
+            await self.ai_bot.short_term_memory.mark_finalized(user_msg_snapshot.message_id) # TODO: forget originating message on error?
 
     async def handle_log_request(self, content: str, original_event: MessageSnapshotEvent):
         try:
@@ -93,30 +96,27 @@ class BaseChatHandler(abc.ABC):
             invalid_log_msg = self.ai_bot.profile.lang["invalid_log_request"].format(content)
             await self._send_reply(invalid_log_msg, original_event)
 
-    async def memorize_message(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
+    async def memorize_short_term(self, message: MessageSnapshot, *, pending: bool, add_after_id: None | int) -> None:
         if add_after_id is None:
             await self.ai_bot.short_term_memory.add(
                 message,
                 pending=pending
             )
-            if self.ai_bot.medium_term_memory is not None:
-                await self.ai_bot.medium_term_memory.add(
-                    message,
-                    pending=pending
-                )
         else:
             await self.ai_bot.short_term_memory.add_after(
                 add_after_id,
                 message,
                 pending=pending
             )
-            if self.ai_bot.medium_term_memory is not None:
-                await self.ai_bot.medium_term_memory.add_after(
-                    add_after_id,
-                    message,
-                    pending=pending
-                )
 
+    async def memorize_medium_term(self, message: MessageSnapshot, *, pending: bool):
+        if self.ai_bot.medium_term_memory is not None:
+            await self.ai_bot.medium_term_memory.add(
+                message,
+                pending=pending
+            )
+
+    async def memorize_long_term(self, message: MessageSnapshot) -> None:
         if self.ai_bot.long_term_memory is not None:
             await self.ai_bot.long_term_memory.memorize(message)
 

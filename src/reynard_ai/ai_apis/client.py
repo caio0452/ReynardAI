@@ -21,7 +21,6 @@ class OpenAIModerator(ContentModerator):
         )
         return response.results[0].flagged
 
-# TODO: should be provider (e.g. OpenAI) agnostic
 class EmbeddingsClient:
     def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):
         self.client = openai.AsyncOpenAI(

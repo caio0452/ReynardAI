@@ -186,8 +186,7 @@ class KnowledgeIndex:
         total_chunks = 0
         for file_path, result in zip(txt_files, results):
             if isinstance(result, Exception):
-                logging.info(f"Error indexing {file_path}")
-                logging.exception(result)
+                logging.error(f"Error indexing {file_path}", exc_info=result)
             elif isinstance(result, int):
                 total_chunks += result
                 logging.info(f"Indexed {file_path}: {result} chunks")

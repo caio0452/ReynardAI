@@ -138,6 +138,9 @@ class KnowledgeIndex:
             
         entries = []
         for chunk in chunks:
+            if not chunk.strip():
+                continue
+
             hash_obj = hashlib.sha256(chunk.encode('utf-8'))
             hash_int = numpy.int64(int.from_bytes(hash_obj.digest()[:8], byteorder='big', signed=True))
             entries.append(
@@ -148,11 +151,20 @@ class KnowledgeIndex:
                 )
             )
         
-        await self._db_conn.index(
-            VectorDatabaseConnection.Indexes.KNOWLEDGE,
-            entries
-        )
-        return len(entries)
+        INDEX_BATCH_SIZE = 16
+        total_indexed = 0
+        for i in range(0, len(entries), INDEX_BATCH_SIZE):
+            batch = entries[i : i + INDEX_BATCH_SIZE]
+            try:
+                await self._db_conn.index(
+                    VectorDatabaseConnection.Indexes.KNOWLEDGE,
+                    batch
+                )
+                total_indexed += len(batch)
+            except Exception as e:
+                logging.error(f"Failed to index batch starting at {i}: {e}")
+                
+        return total_indexed
 
     async def index_from_folder(self, path, max_concurrent_tasks=8): 
         if not os.path.exists(path):

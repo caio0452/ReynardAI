@@ -31,10 +31,18 @@ class EmbeddingsClient:
         self.embedding_dim = embedding_dim
 
     async def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
+        MAX_EMBEDDING_LEN = 32768 # Todo: make configurable
         def check_response(resp):
             if resp is None or resp.data is None:
                 raise ValueError("Embeddings response is invalid or empty")
-
+        
+        if isinstance(input, str) and len(input) > MAX_EMBEDDING_LEN:
+            raise ValueError(f"Cannot embed input longer than {MAX_EMBEDDING_LEN} characters, got length {len(input)}")
+        elif isinstance(input, list):
+            for item in input:
+                if len(item) > MAX_EMBEDDING_LEN:
+                    raise ValueError(f"Cannot embed input longer than {MAX_EMBEDDING_LEN} characters, got length {len(item)}")
+                
         if isinstance(input, str):
             response = await self.client.embeddings.create(
                 input=input,

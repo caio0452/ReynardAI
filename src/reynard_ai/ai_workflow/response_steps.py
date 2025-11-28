@@ -138,7 +138,10 @@ class AttachmentDescribeStep(ResponseStep):
         data_url = f"data:{ctype};base64,{base64_data}"
 
         prompt = self._get_prompt(NAME).replace(
-            {"attachment_url": data_url}
+            {
+                "attachment_url": data_url,
+                "query": self.message
+            }
         )
         self.logger.verbose(f"Prompt (messages truncated): {json.dumps(prompt.messages, indent=4)}")
         response = await self.ai_bot.send_llm_request(

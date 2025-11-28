@@ -31,25 +31,35 @@ class EmbeddingsClient:
         self.embedding_dim = embedding_dim
 
     async def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
+        def check_response(resp):
+            if resp is None or resp.data is None:
+                raise ValueError("Embeddings response is invalid or empty")
+
         if isinstance(input, str):
             response = await self.client.embeddings.create(
                 input=input,
                 model=self.model_name
             )
+            check_response(response)
             embedding = response.data[0].embedding
             if len(embedding) != self.embedding_dim:
                 raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
             return embedding
         elif isinstance(input, list):
+            if len(input) == 0:
+                raise ValueError("There is nothing to vectorize, input list is empty")
             response = await self.client.embeddings.create(
                 input=input,
                 model=self.model_name
             )
+            check_response(response)
             result = [e.embedding for e in response.data]
             for embedding in result:
                 if len(embedding) != self.embedding_dim:
                     raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
             return result
+        else:
+            raise ValueError("Input must be a string or list of strings")
 
 class SyncEmbeddingsClient:
     def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):

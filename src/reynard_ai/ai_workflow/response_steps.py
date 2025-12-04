@@ -170,7 +170,10 @@ class RelevantInfoSelectStep(ResponseStep):
         for hits in hits_list:
             for hit in hits:
                 available_info += hit["text"] + "\n"
-
+        
+        if not self.ai_bot.profile.options.enable_knowledge_summarization:
+            return available_info.strip()
+        
         prompt = self._get_prompt(NAME) \
             .replace({
                 "user_query": self.user_query,

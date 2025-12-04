@@ -24,6 +24,7 @@ class MiscOptions(BaseModel):
     only_ping_on_response_finish: bool
     enable_personality_rewrite: bool
     enable_knowledge_retrieval: bool
+    enable_knowledge_summarization: bool
     remove_trailing_newline: bool
     enable_image_viewing: bool
     enable_moderation: bool

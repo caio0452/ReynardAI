@@ -88,7 +88,6 @@ class KnowledgeIndex:
         knowledge_db_path = os.path.join(base_path, 'knowledge.db')
         config_path = os.path.join(base_path, 'chunking_strategy.json')
         
-        # Load Strategy Config
         strategy_config = KnowledgeStrategyConfig()
         if os.path.exists(config_path):
             try:
@@ -166,22 +165,13 @@ class KnowledgeIndex:
                 
         return total_indexed
 
-    async def index_from_folder(self, path, max_concurrent_tasks=8): 
-        if not os.path.exists(path):
-            logging.info(f"The knowledge folder, located in '{path}' does not exist. Skipping knowledge indexing.")
-            return
-
+    async def index_files(self, files: list[str]):
         strategy_config = self.config
-        all_files = glob.glob(f"{path}/*")
-        txt_files = [file for file in all_files if file.endswith('.txt')]
-        non_txt_files = [file for file in all_files if not file.endswith('.txt') and not file.endswith('.json')]
+        txt_files = [file for file in files if file.endswith('.txt')]
+        non_txt_files = [file for file in files if not file.endswith('.txt') and not file.endswith('.json')]
 
         for file in non_txt_files:
             logging.info(f"Error: {file} is not a .txt file. All knowledge must be in text files. Skipping.")
-
-        if not txt_files:
-            logging.info(f"No files in knowledge folder: '{path}', nothing to index'")
-            return
 
         async def process_file(file_path):
             file_name = os.path.basename(file_path)
@@ -204,6 +194,18 @@ class KnowledgeIndex:
                 logging.info(f"Indexed {file_path}: {result} chunks")
 
         logging.info(f"Total chunks indexed: {total_chunks}")
+    
+    async def index_from_folder(self, path, max_concurrent_tasks=8): 
+        if not os.path.exists(path):
+            logging.info(f"The knowledge folder, located in '{path}' does not exist. Skipping knowledge indexing.")
+            return
+        
+        folder_files = glob.glob(f"{path}/*")
+        if len(folder_files) == 0:
+            logging.info(f"No files in knowledge folder '{path}', skipping indexing")
+            return
+        
+        await self.index_files(folder_files)
 
     async def retrieve(self, related_text: str):
         max_chunks = self.config.retrieval.max_chunks

@@ -73,7 +73,7 @@ class Prompt(BaseModel, frozen=True):
         if forbid_extra:
             extra = set(replacements.keys()) - found
             if extra:
-                raise ValueError(f"The following replacements must be in your prompt: {sorted(extra)}")
+                raise ValueError(f"The replacement (({sorted(extra)})) must be in your prompt ", self.model_dump_json()[0:1024], "...")
             
         return Prompt(messages=new_messages)
 

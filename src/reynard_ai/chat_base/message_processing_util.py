@@ -1,3 +1,5 @@
+import re
+
 def split_by_length(text: str, max_len: int) -> list[str]:
     chunks: list[str] = []
     pos = 0       
@@ -17,29 +19,47 @@ def split_by_length(text: str, max_len: int) -> list[str]:
             pos += 1
     return chunks
 
-def balance_code_fences(raw_chunks: list[str]) -> list[str]:
-    balanced: list[str] = []
-    inside_code = False      
-    open_fence_line = "" 
+def chunk_text_code_aware(text: str, *, max_chunk_size: int) -> list[str]:
+    lines = text.splitlines(keepends=True)
+    chunks = []
+    current_chunk = []
+    current_length = 0
+    
+    in_code_block = False
+    current_language = ""
+    
+    fence_pattern = re.compile(r'^ *`{3,}(.*)$') # Code fence + language
+    for line in lines:
+        line_length = len(line)
+        
+        match = fence_pattern.match(line.strip())
+        is_fence_toggle = bool(match)
+        closing_overhead = len("\n```") if in_code_block and not is_fence_toggle else 0
+        
+        if current_chunk and (current_length + line_length + closing_overhead > max_chunk_size):
+            if in_code_block:
+                current_chunk.append("\n```")
+                chunks.append("".join(current_chunk))
+                start_tag = f"```{current_language}\n"
+                current_chunk = [start_tag]
+                current_length = len(start_tag)
+            else:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_length = 0
 
-    for chunk in raw_chunks:
-        out = ""
-        if inside_code:
-            out += open_fence_line + "\n"
-        out += chunk
+        current_chunk.append(line)
+        current_length += line_length
+        
+        if is_fence_toggle:
+            if in_code_block:
+                in_code_block = False
+                current_language = ""
+            else:
+                in_code_block = True
+                current_language = match.group(1).strip()
 
-        tmp_is_in_code = inside_code
-        for line in chunk.splitlines():
-            stripped = line.lstrip()
-            if stripped.startswith("```"):
-                tmp_state = not tmp_is_in_code
-                if tmp_state:
-                    open_fence_line = stripped.rstrip('\n')
+    if current_chunk:
+        chunks.append("".join(current_chunk))
 
-        if tmp_is_in_code:
-            if not out.endswith("\n"):
-                out += "\n"
-            out += "```"
-        balanced.append(out)
-        inside_code = tmp_is_in_code
-    return balanced
+    return chunks

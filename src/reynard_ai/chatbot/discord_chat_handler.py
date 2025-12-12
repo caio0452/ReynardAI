@@ -55,7 +55,7 @@ class DiscordChatHandler(BaseChatHandler):
         def strip_newline(chunk):
             return chunk.strip('\r\n') if self.ai_bot.profile.options.remove_trailing_newline else chunk
 
-        raw_chunks = message_processing_util.split_by_length(text, max_chunk_length)
+        raw_chunks = message_processing_util.chunk_text_code_aware(text, max_chunk_size=max_chunk_length)
         full_chunks = [
             f"{strip_newline(chunk)}{disclaimer}"
             for chunk in raw_chunks

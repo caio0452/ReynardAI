@@ -269,7 +269,7 @@ class AIResponder:
                 full_prompt = full_prompt.plus(Prompt.user_msg(memorized_message.text))
         
         if self.ai_bot.profile.options.enable_image_viewing and attachment_description is not None:
-            full_prompt = full_prompt.plus(Prompt.system_msg(f"(I've viewed the image by {user_nick}. Description: {attachment_description})"))
+            full_prompt = full_prompt.plus(Prompt.user_msg(f"SYSTEM: ATTACHMENT UPLOADED BY {user_nick}.\nATTACHMENT DESCRIPTION: {attachment_description})"))
 
         now_str = datetime.datetime.now().strftime("%B %d, %H:%M:%S")
 

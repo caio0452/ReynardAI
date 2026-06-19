@@ -146,7 +146,7 @@ class AIResponder:
     async def _moderate(self, last_message_content: str) -> LLMModerator.Result:
        # TODO: abstract this into a ResponseStep
        NAME = "MODERATOR"
-       moderation_prompt = self.ai_bot.profile.prompts[NAME].replace({
+       moderation_prompt = self.ai_bot.profile.get_prompt(NAME).replace({
            "message": self.last_msg_snapshot.text
         })
        self.logger.verbose(f"Moderating prompt: {moderation_prompt}")
@@ -260,7 +260,7 @@ class AIResponder:
             medium_term_summary: str | None
         ) -> Prompt:
         NAME = "PERSONALITY"
-        full_prompt: Prompt = self.ai_bot.profile.prompts[NAME].model_copy(deep=True)
+        full_prompt: Prompt = self.ai_bot.profile.get_prompt(NAME).model_copy(deep=True)
 
         for memorized_message in memory_snapshot.as_list():
             if memorized_message.is_bot:

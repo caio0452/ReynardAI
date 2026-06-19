@@ -27,11 +27,7 @@ class ResponseStep(ABC):
         return ret
 
     def _get_prompt(self, name: str):
-        if name not in self.ai_bot.profile.prompts:
-            available_prompts = ", ".join(p for p in self.ai_bot.profile.prompts.keys())
-            raise ValueError(f"Failed to fetch required prompt {name}, it doesn't exist. Available prompts: {available_prompts}")
-        else:
-            return self.ai_bot.profile.prompts[name]
+        return self.ai_bot.profile.get_prompt(name)
 
     @abstractmethod
     async def _run(self) -> str | None:
@@ -92,7 +88,7 @@ class HistorySummarizerStep(ResponseStep):
         msgs_to_summarize_str = "\n".join(
             [memorized_message.text for memorized_message in msgs_to_summarize]
         )
-        prompt = self.ai_bot.profile.prompts[NAME].replace_or_throw({
+        prompt = self._get_prompt(NAME).replace_or_throw({
             "messages": msgs_to_summarize_str
         })
         response = await self.ai_bot.send_llm_request(

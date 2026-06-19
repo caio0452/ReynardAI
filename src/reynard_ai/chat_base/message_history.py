@@ -51,8 +51,9 @@ class MessageSnapshotHistory:
 
 class SynchronizedMessageHistory:
     def __init__(self, *, max_length: int, initial_history: MessageSnapshotHistory | None = None):
+        self.max_length = max_length
         if initial_history is None:
-            self._backing_history = MessageSnapshotHistory()
+            self._backing_history = MessageSnapshotHistory(memory_length=max_length)
         else:
             self._backing_history = initial_history
         self._pending_message_ids: set[int] = set()

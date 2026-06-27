@@ -1,6 +1,9 @@
-from typing import override
+from __future__ import annotations
+from typing import override, TYPE_CHECKING
 from .knowledge import KnowledgeIndex, LongTermMemoryIndex
-from .ai_bot import ReynardAIBotData
+
+if TYPE_CHECKING:
+    from .ai_bot import ReynardAIBotData
 
 class BaseModule:
     def register(self, bot: ReynardAIBotData) -> None:

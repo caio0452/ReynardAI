@@ -32,6 +32,8 @@ class MiscOptions(BaseModel):
     enable_image_viewing: bool = False
     enable_moderation: bool = False
     botname: str = "Reynard"
+    enable_mrl: bool = False
+    mrl_dim: int | None = None
 
 class MemorySettings(BaseModel):
     full_history_length: int = 100
@@ -39,6 +41,8 @@ class MemorySettings(BaseModel):
     short_term_history_length: int = 50
     enable_medium_term_memory: bool = False
     medium_term_history_length: int = 20
+    enable_mrl: bool = False
+    mrl_dim: int | None = None
 
 class ProfileDefaultsProvider:
     def get_default_prompts(self) -> dict[str, Prompt]:

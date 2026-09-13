@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import logging
 
-from typing import Literal, Dict
+from typing import Literal, Dict, Any
 
 from pydantic import BaseModel, Field
 from ..ai_apis.client import EmbeddingsClient
@@ -28,6 +28,8 @@ class KnowledgeStrategyConfig(BaseModel):
     default: ChunkingConfig = Field(default_factory=ChunkingConfig)
     files: Dict[str, ChunkingConfig] = Field(default_factory=dict)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    enable_mrl: bool = False
+    mrl_dim: int | None = None
 
 class LongTermMemoryIndex:
     def __init__(self, _db_conn: VectorDatabaseConnection): 
@@ -43,7 +45,10 @@ class LongTermMemoryIndex:
         await self.close()
 
     @staticmethod
-    async def from_vectorizer(vectorizer: EmbeddingsClient) -> "LongTermMemoryIndex":
+    async def from_vectorizer(vectorizer: EmbeddingsClient, memory_settings: Any | None = None) -> "LongTermMemoryIndex":
+        if memory_settings and getattr(memory_settings, "enable_mrl", False) and getattr(memory_settings, "mrl_dim", None) is not None:
+            vectorizer.mrl_dim = memory_settings.mrl_dim
+            vectorizer.embedding_dim = memory_settings.mrl_dim
         memories_db_path = os.path.join(os.getcwd(), 'brain_content', 'memories', 'memories.db')
         vector_db: VectorDatabase = VectorDatabase(vectorizer, memories_db_path)
         db_conn = await vector_db.connect()
@@ -101,22 +106,27 @@ class KnowledgeIndex:
         await self.close()
 
     @staticmethod
-    async def from_vectorizer(vectorizer: EmbeddingsClient) -> "KnowledgeIndex":
+    async def from_vectorizer(vectorizer: EmbeddingsClient, strategy_config: KnowledgeStrategyConfig | None = None) -> "KnowledgeIndex":
         base_path = os.path.join(os.getcwd(), 'brain_content', 'knowledge')
         knowledge_db_path = os.path.join(base_path, 'knowledge.db')
         config_path = os.path.join(base_path, 'chunking_strategy.json')
         
-        strategy_config = KnowledgeStrategyConfig()
-        if os.path.exists(config_path):
-            try:
-                def _read_config():
-                    with open(config_path, 'r') as f:
-                        return json.load(f)
-                json_data = await asyncio.to_thread(_read_config)
-                strategy_config = KnowledgeStrategyConfig(**json_data)
-                logging.info(f"Loaded knowledge strategy from {config_path}")
-            except Exception as e:
-                logging.error(f"Failed to load chunking_strategy.json: {e}. Using defaults.")
+        if strategy_config is None:
+            strategy_config = KnowledgeStrategyConfig()
+            if os.path.exists(config_path):
+                try:
+                    def _read_config():
+                        with open(config_path, 'r') as f:
+                            return json.load(f)
+                    json_data = await asyncio.to_thread(_read_config)
+                    strategy_config = KnowledgeStrategyConfig(**json_data)
+                    logging.info(f"Loaded knowledge strategy from {config_path}")
+                except Exception as e:
+                    logging.error(f"Failed to load chunking_strategy.json: {e}. Using defaults.")
+
+        if strategy_config.enable_mrl and strategy_config.mrl_dim is not None:
+            vectorizer.mrl_dim = strategy_config.mrl_dim
+            vectorizer.embedding_dim = strategy_config.mrl_dim
 
         vector_db: VectorDatabase = VectorDatabase(vectorizer, knowledge_db_path)
         db_conn = await vector_db.connect()

@@ -22,13 +22,14 @@ class OpenAIModerator(ContentModerator):
         return response.results[0].flagged
 
 class EmbeddingsClient:
-    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):
+    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int, mrl_dim: int | None = None):
         self.client = openai.AsyncOpenAI(
             api_key=provider.api_key, 
             base_url=provider.api_base
         )
         self.model_name = model_name
-        self.embedding_dim = embedding_dim
+        self.mrl_dim = mrl_dim
+        self.embedding_dim = mrl_dim if mrl_dim is not None else embedding_dim
 
     async def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
         MAX_EMBEDDING_LEN = 32768 # Todo: make configurable
@@ -50,6 +51,8 @@ class EmbeddingsClient:
             )
             check_response(response)
             embedding = response.data[0].embedding
+            if self.mrl_dim is not None:
+                embedding = embedding[:self.mrl_dim]
             if len(embedding) != self.embedding_dim:
                 raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
             return embedding
@@ -62,6 +65,8 @@ class EmbeddingsClient:
             )
             check_response(response)
             result = [e.embedding for e in response.data]
+            if self.mrl_dim is not None:
+                result = [e[:self.mrl_dim] for e in result]
             for embedding in result:
                 if len(embedding) != self.embedding_dim:
                     raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
@@ -70,13 +75,14 @@ class EmbeddingsClient:
             raise ValueError("Input must be a string or list of strings")
 
 class SyncEmbeddingsClient:
-    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int):
+    def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int, mrl_dim: int | None = None):
         self.openai_client = openai.OpenAI(
             api_key=provider.api_key,
             base_url=provider.api_base
         )
         self.model_name = model_name
-        self.embedding_dim = embedding_dim
+        self.mrl_dim = mrl_dim
+        self.embedding_dim = mrl_dim if mrl_dim is not None else embedding_dim
 
     def vectorize(self, input: str | list[str]) -> list[float] | list[list[float]]:
         if isinstance(input, str):
@@ -85,6 +91,8 @@ class SyncEmbeddingsClient:
                 model=self.model_name
             )
             embedding = response.data[0].embedding
+            if self.mrl_dim is not None:
+                embedding = embedding[:self.mrl_dim]
             if len(embedding) != self.embedding_dim:
                 raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")
             return embedding
@@ -94,6 +102,8 @@ class SyncEmbeddingsClient:
                 model=self.model_name
             )
             result = [e.embedding for e in response.data]
+            if self.mrl_dim is not None:
+                result = [e[:self.mrl_dim] for e in result]
             for embedding in result:
                 if len(embedding) != self.embedding_dim:
                     raise ValueError(f"Embedding dim {len(embedding)} does not match expected {self.embedding_dim}")

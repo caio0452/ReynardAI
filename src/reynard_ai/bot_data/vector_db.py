@@ -1,3 +1,4 @@
+import os
 import numpy
 import hashlib
 
@@ -6,13 +7,22 @@ from typing import Any
 from dataclasses import dataclass
 from ..ai_apis.providers import ProviderData
 from ..ai_apis.client import EmbeddingsClient
-from pymilvus import MilvusClient, AsyncMilvusClient, DataType
+from pymilvus import AsyncMilvusClient, DataType
 
 class VectorDatabaseConnection:
-    def __init__(self, _async_client: AsyncMilvusClient, _sync_client: MilvusClient, vectorizer: EmbeddingsClient):
-        self._sync_client = _sync_client
-        self._async_client = _async_client
+    def __init__(self, client: AsyncMilvusClient, vectorizer: EmbeddingsClient):
+        self._async_client = client
+        self.client = client
         self.vectorizer = vectorizer
+
+    async def close(self):
+        await self._async_client.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
         
     @dataclass
     class DBEntry:
@@ -75,12 +85,23 @@ class VectorDatabase:
         
     def __init__(self, vectorizer: EmbeddingsClient, path: str):
         self.vectorizer = vectorizer
+        parent_dir = os.path.dirname(os.path.abspath(path))
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         self.async_client = AsyncMilvusClient(path)
-        self.sync_client = MilvusClient(path)
+
+    async def close(self):
+        await self.async_client.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
     async def connect(self) -> VectorDatabaseConnection:
-        async def make_schema(name: str):
-            schema = self.sync_client.create_schema(
+        def make_schema():
+            schema = AsyncMilvusClient.create_schema(
                 auto_id=False,
                 description="Brain schema",
             )
@@ -90,26 +111,27 @@ class VectorDatabase:
             schema.add_field("text", DataType.VARCHAR, max_length=8192)
             return schema
 
-        async def create_collection_index(name: str):
-            index_params = MilvusClient.prepare_index_params()
+        def create_collection_index_params():
+            index_params = AsyncMilvusClient.prepare_index_params()
             index_params.add_index(
                 field_name="vector",
                 metric_type="COSINE",
                 index_type="IVF_FLAT",
                 index_name="vector_index"
             )
-            await self.async_client.create_index(
-                collection_name=name,
-                index_params=index_params
-            )
+            return index_params
 
-        if not self.sync_client.has_collection("knowledge"):
-            knowledge_schema = await make_schema("knowledge")
-            await self.async_client.create_collection(collection_name="knowledge", schema=knowledge_schema)
-            await create_collection_index("knowledge")
-        if not self.sync_client.has_collection("memories"):
-            memories_schema = await make_schema("memories")
-            await self.async_client.create_collection(collection_name="memories", schema=memories_schema)
-            await create_collection_index("memories")
+        for collection_name in ("knowledge", "memories"):
+            if not await self.async_client.has_collection(collection_name):
+                schema = make_schema()
+                index_params = create_collection_index_params()
+                await self.async_client.create_collection(
+                    collection_name=collection_name,
+                    schema=schema,
+                    index_params=index_params,
+                )
+            else:
+                await self.async_client.load_collection(collection_name)
         
-        return VectorDatabaseConnection(self.async_client, self.sync_client, self.vectorizer)
+        return VectorDatabaseConnection(self.async_client, self.vectorizer)
+

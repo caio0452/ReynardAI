@@ -33,6 +33,15 @@ class LongTermMemoryIndex:
     def __init__(self, _db_conn: VectorDatabaseConnection): 
         self._db_conn = _db_conn
 
+    async def close(self):
+        await self._db_conn.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
     @staticmethod
     async def from_vectorizer(vectorizer: EmbeddingsClient) -> "LongTermMemoryIndex":
         memories_db_path = os.path.join(os.getcwd(), 'brain_content', 'memories', 'memories.db')
@@ -82,6 +91,15 @@ class KnowledgeIndex:
         self._db_conn = _db_conn
         self.config = config
 
+    async def close(self):
+        await self._db_conn.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
     @staticmethod
     async def from_vectorizer(vectorizer: EmbeddingsClient) -> "KnowledgeIndex":
         base_path = os.path.join(os.getcwd(), 'brain_content', 'knowledge')
@@ -91,9 +109,11 @@ class KnowledgeIndex:
         strategy_config = KnowledgeStrategyConfig()
         if os.path.exists(config_path):
             try:
-                with open(config_path, 'r') as f:
-                    json_data = json.load(f)
-                    strategy_config = KnowledgeStrategyConfig(**json_data)
+                def _read_config():
+                    with open(config_path, 'r') as f:
+                        return json.load(f)
+                json_data = await asyncio.to_thread(_read_config)
+                strategy_config = KnowledgeStrategyConfig(**json_data)
                 logging.info(f"Loaded knowledge strategy from {config_path}")
             except Exception as e:
                 logging.error(f"Failed to load chunking_strategy.json: {e}. Using defaults.")
@@ -176,11 +196,13 @@ class KnowledgeIndex:
         async def process_file(file_path):
             file_name = os.path.basename(file_path)
             file_config = strategy_config.files.get(file_name, strategy_config.default)
-            with open(file_path, 'r') as file:
-                text = file.read()
-                logging.info(f"Chunking file '{file_name}' using trategy: {file_config.strategy}")
-                n_chunks = await self.chunk_and_index(text, file_config)
-                return n_chunks
+            def _read_file():
+                with open(file_path, 'r') as file:
+                    return file.read()
+            text = await asyncio.to_thread(_read_file)
+            logging.info(f"Chunking file '{file_name}' using strategy: {file_config.strategy}")
+            n_chunks = await self.chunk_and_index(text, file_config)
+            return n_chunks
 
         tasks = [process_file(file) for file in txt_files]
         results = await asyncio.gather(*tasks, return_exceptions=True)

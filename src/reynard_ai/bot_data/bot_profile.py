@@ -174,6 +174,16 @@ class Profile(BaseModel):
     def get_request_params(self, target_name: str) -> LLMRequestParams:
         return self.get_request_params_by_name(target_name)
 
+    @classmethod
+    def from_directory(cls, directory_path: str) -> "Profile":
+        loader = ProfileLoader(JsonFileReader(), ProfileDefaultsProvider())
+        return loader.load_profile_from_directory(directory_path)
+
+    @classmethod
+    def from_file(cls, file_path: str) -> "Profile":
+        loader = ProfileLoader(JsonFileReader(), ProfileDefaultsProvider())
+        return loader.load_profile_from_file(file_path)
+
 class JsonFileReader:
     def read_dictionary_from_file(self, file_path: str) -> dict[str, Any] | None:
         if not os.path.exists(file_path):

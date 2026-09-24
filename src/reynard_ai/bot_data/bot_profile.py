@@ -150,10 +150,6 @@ class Profile(BaseModel):
         provider = self._find_provider(target_name)
         if provider is not None:
             return provider
-        if "openai" in self.providers:
-            return self.providers["openai"]
-        if len(self.providers) == 1:
-            return next(iter(self.providers.values()))
         raise RuntimeError(f"Failed to get provider '{target_name}'")
 
     def get_prompt_by_name(self, target_name: str) -> Prompt:
@@ -170,11 +166,9 @@ class Profile(BaseModel):
         for param_name, param_data in self.request_params.items():
             if param_name.lower() == target_name.lower():
                 return param_data
-        if "openai" in self.request_params:
-            return self.request_params["openai"]
-        if len(self.request_params) == 1:
-            return next(iter(self.request_params.values()))
-        return LLMRequestParams(model_name="gpt-4o-mini")
+        if target_name.lower() == "embeddings":
+            return LLMRequestParams(model_name=self.options.embedding_model_name)
+        raise RuntimeError(f"Failed to get request params '{target_name}'")
 
     def get_provider(self, target_name: str) -> ProviderData:
         return self.get_provider_by_name(target_name)

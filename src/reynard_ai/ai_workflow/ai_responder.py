@@ -35,10 +35,16 @@ class AIResponder:
         self.clients: dict[str, LLMClient] = {}
         self.logger = SimpleDebugLogger("ResponseLogger")
         self.chatroom = chatroom
-        self._moderator = LLMModerator(self.ai_bot.profile)
+        self._moderator: LLMModerator | None = None
+        if self.ai_bot.profile.options.enable_moderation:
+            self._moderator = LLMModerator(self.ai_bot.profile)
 
         for provider_name, provider_data in ai_bot.provider_store.providers.items():
-            self.clients[provider_name] = LLMClient.from_provider(provider_data)
+            if provider_data.api_key:
+                try:
+                    self.clients[provider_name] = LLMClient.from_provider(provider_data)
+                except Exception as e:
+                    self.logger.verbose(f"Could not initialize client for provider '{provider_name}': {e}")
     
     async def _rephrase_user_query(self, message_history: MessageSnapshotHistory) -> str:
         user_query = await UserQueryRephraseStep(message_history, self.logger).execute(self.ai_bot, self.last_msg_snapshot.text)
@@ -145,6 +151,8 @@ class AIResponder:
     
     async def _moderate(self, last_message_content: str) -> LLMModerator.Result:
        # TODO: abstract this into a ResponseStep
+       if self._moderator is None:
+           self._moderator = LLMModerator(self.ai_bot.profile)
        NAME = "MODERATOR"
        moderation_prompt = self.ai_bot.profile.get_prompt(NAME).replace({
            "message": self.last_msg_snapshot.text
@@ -190,7 +198,10 @@ class AIResponder:
             main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
             model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
             exceptions: list[BaseException] = []
-            llm_response = None
+            if MAIN_CLIENT_NAME not in self.clients:
+                provider = self.ai_bot.profile.get_provider(MAIN_CLIENT_NAME)
+                self.clients[MAIN_CLIENT_NAME] = LLMClient.from_provider(provider)
+
             for name in model_names_order:
                 modified_params = main_client_params.model_copy(deep=True)
                 modified_params = LLMRequestParams(

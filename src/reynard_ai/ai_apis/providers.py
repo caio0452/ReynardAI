@@ -5,13 +5,14 @@ from typing import List
 class ProviderData(BaseModel):
     provider_name: str
     api_base: str = Field(default='https://api.openai.com/v1')
-    api_key: str
+    api_key: str = ""
 
     @model_validator(mode='before')
     @classmethod
     def check_and_load_api_key(cls, values):
-        if 'api_key' in values:
-            values['api_key'] = parse_api_key_in_config(values['api_key'])
+        if isinstance(values, dict):
+            raw_key = values.get('api_key')
+            values['api_key'] = parse_api_key_in_config(raw_key)
         return values
 
 class ProviderDataStore:

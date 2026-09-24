@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from typing import Any
-from pydantic import BaseModel, Field, field_validator, ValidationError
+from pydantic import BaseModel, Field, field_validator, ValidationError, model_validator
 
 from ..ai_apis.providers import ProviderData
 from ..ai_apis.api_types import LLMRequestParams, Prompt
@@ -17,7 +17,7 @@ class FalImageGenModuleConfig(BaseModel):
 
     @field_validator("api_key", mode="before")
     @classmethod
-    def parse_api_key(cls, raw_key: str) -> str:
+    def parse_api_key(cls, raw_key: str | None) -> str:
         if not raw_key:
             return ""
         return parse_api_key_in_config(raw_key)
@@ -90,23 +90,89 @@ class Profile(BaseModel):
     regex_replacements: dict[str, str | list[str]] = Field(default_factory=dict)
     fal_image_gen_config: FalImageGenModuleConfig = Field(default_factory=FalImageGenModuleConfig)
 
-    def get_provider_by_name(self, target_name: str) -> ProviderData:
+    def _find_provider(self, target_name: str) -> ProviderData | None:
         if target_name in self.providers:
             return self.providers[target_name]
         for provider_name, provider_data in self.providers.items():
             if provider_name.lower() == target_name.lower():
                 return provider_data
+        return None
+
+    @model_validator(mode="after")
+    def validate_api_keys_for_enabled_features(self) -> "Profile":
+        if self.options.enable_personality_rewrite:
+            provider = self._find_provider("PERSONALITY_REWRITE")
+            if not provider or not provider.api_key:
+                raise ValueError("Personality rewriter is enabled in config, but API key for 'PERSONALITY_REWRITE' is missing.")
+
+        if self.options.enable_moderation:
+            provider = self._find_provider("MODERATOR")
+            if not provider or not provider.api_key:
+                raise ValueError("Moderation is enabled in config, but API key for 'MODERATOR' is missing.")
+
+        if self.options.enable_image_viewing:
+            provider = self._find_provider("ATTACHMENT_DESCRIBE")
+            if not provider or not provider.api_key:
+                raise ValueError("Image viewing is enabled in config, but API key for 'ATTACHMENT_DESCRIBE' is missing.")
+
+        if self.options.enable_knowledge_retrieval:
+            provider = self._find_provider("USER_QUERY_REPHRASE")
+            if not provider or not provider.api_key:
+                raise ValueError("Knowledge retrieval is enabled in config, but API key for 'USER_QUERY_REPHRASE' is missing.")
+            if self.options.enable_knowledge_summarization:
+                info_provider = self._find_provider("INFO_SELECT")
+                if not info_provider or not info_provider.api_key:
+                    raise ValueError("Knowledge summarization is enabled in config, but API key for 'INFO_SELECT' is missing.")
+
+        if self.memory_settings.enable_medium_term_memory:
+            provider = self._find_provider("HISTORY_SUMMARIZE")
+            if not provider or not provider.api_key:
+                raise ValueError("Medium-term memory summarization is enabled in config, but API key for 'HISTORY_SUMMARIZE' is missing.")
+
+        if self.fal_image_gen_config.enabled:
+            if not self.fal_image_gen_config.api_key:
+                raise ValueError("Fal image generation is enabled in config, but API key is missing.")
+
+        return self
+
+    def get_provider_by_name(self, target_name: str) -> ProviderData:
+        provider = self._find_provider(target_name)
+        if provider is not None:
+            return provider
+        if "openai" in self.providers:
+            return self.providers["openai"]
+        if len(self.providers) == 1:
+            return next(iter(self.providers.values()))
         raise RuntimeError(f"Failed to get provider '{target_name}'")
 
     def get_prompt_by_name(self, target_name: str) -> Prompt:
         if target_name in self.prompts:
             return self.prompts[target_name]
+        for prompt_name, prompt_data in self.prompts.items():
+            if prompt_name.lower() == target_name.lower():
+                return prompt_data
         raise RuntimeError(f"Failed to get prompt '{target_name}'")
 
     def get_request_params_by_name(self, target_name: str) -> LLMRequestParams:
         if target_name in self.request_params:
             return self.request_params[target_name]
-        raise RuntimeError(f"Failed to get parameter set named '{target_name}'")
+        for param_name, param_data in self.request_params.items():
+            if param_name.lower() == target_name.lower():
+                return param_data
+        if "openai" in self.request_params:
+            return self.request_params["openai"]
+        if len(self.request_params) == 1:
+            return next(iter(self.request_params.values()))
+        return LLMRequestParams(model_name="gpt-4o-mini")
+
+    def get_provider(self, target_name: str) -> ProviderData:
+        return self.get_provider_by_name(target_name)
+
+    def get_prompt(self, target_name: str) -> Prompt:
+        return self.get_prompt_by_name(target_name)
+
+    def get_request_params(self, target_name: str) -> LLMRequestParams:
+        return self.get_request_params_by_name(target_name)
 
 class JsonFileReader:
     def read_dictionary_from_file(self, file_path: str) -> dict[str, Any] | None:

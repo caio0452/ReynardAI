@@ -209,18 +209,18 @@ class KnowledgeIndex:
         for i in range(0, len(entries), INDEX_BATCH_SIZE):
             batch = entries[i : i + INDEX_BATCH_SIZE]
             try:
-                await self._db_conn.index(
+                indexed_count = await self._db_conn.index(
                     VectorDatabaseConnection.Indexes.KNOWLEDGE,
                     batch
                 )
-                total_indexed += len(batch)
+                total_indexed += indexed_count
             except Exception as e:
                 logging.error(f"Failed to index batch starting at {i}: {e}")
                 raise
                 
         return total_indexed
 
-    async def index_files(self, files: list[str], max_concurrent_tasks: int = 4):
+    async def index_files(self, files: list[str], max_concurrent_tasks: int = 8):
         if max_concurrent_tasks < 1:
             raise ValueError("max_concurrent_tasks must be at least 1")
 
@@ -261,7 +261,7 @@ class KnowledgeIndex:
         if failed_files:
             logging.error(f"Failed to index {failed_files} of {len(txt_files)} knowledge files")
     
-    async def index_from_folder(self, path, max_concurrent_tasks=4):
+    async def index_from_folder(self, path, max_concurrent_tasks=8):
         if not os.path.exists(path):
             logging.info(f"The knowledge folder, located in '{path}' does not exist. Skipping knowledge indexing.")
             return

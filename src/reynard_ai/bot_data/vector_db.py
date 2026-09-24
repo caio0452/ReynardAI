@@ -42,28 +42,39 @@ class VectorDatabaseConnection:
         KNOWLEDGE = "knowledge"
         MEMORIES = "memories"
 
-    async def index(self, index: Indexes, data: DBEntry | list[DBEntry]):
-        if isinstance(data, list):
-            texts = [entry.text for entry in data]
-            vectors = await self.vectorizer.vectorize(texts)
-            to_index = [
-                {
-                    "id": entry.id, 
-                    "metadata": entry.metadata, 
-                    "vector": vectors[i], 
-                    "text": entry.text
-                }
-                for i, entry in enumerate(data)
-            ]
-            await self._async_client.insert(index.value, to_index)
-        else:
-            to_index = {
-                "id": data.id, 
-                "metadata": data.metadata, 
-                "vector": await self.vectorizer.vectorize(data.text), 
-                "text": data.text
+    async def index(self, index: Indexes, data: DBEntry | list[DBEntry]) -> int:
+        entries = data if isinstance(data, list) else [data]
+        unique_entries = list({int(entry.id): entry for entry in entries}.values())
+        if not unique_entries:
+            return 0
+
+        ids = ",".join(str(int(entry.id)) for entry in unique_entries)
+        existing = await self._async_client.query(
+            collection_name=index.value,
+            filter=f"id in [{ids}]",
+            output_fields=["id"],
+        )
+        existing_ids = {int(row["id"]) for row in existing}
+        entries_to_index = [
+            entry for entry in unique_entries if int(entry.id) not in existing_ids
+        ]
+        if not entries_to_index:
+            return 0
+
+        vectors = await self.vectorizer.vectorize(
+            [entry.text for entry in entries_to_index]
+        )
+        to_index = [
+            {
+                "id": entry.id,
+                "metadata": entry.metadata,
+                "vector": vectors[i],
+                "text": entry.text,
             }
-            await self._async_client.insert(index.value, to_index)
+            for i, entry in enumerate(entries_to_index)
+        ]
+        await self._async_client.insert(index.value, to_index)
+        return len(entries_to_index)
 
     async def search(self, index: Indexes, text: str, limit=5) -> list[list[dict]]:
         return await self._async_client.search(

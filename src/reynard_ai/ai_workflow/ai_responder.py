@@ -198,6 +198,7 @@ class AIResponder:
             main_client_params = self.ai_bot.profile.get_request_params(MAIN_CLIENT_NAME)
             model_names_order = [main_client_params.model_name] + self.ai_bot.profile.options.llm_fallbacks
             exceptions: list[BaseException] = []
+            llm_response: str | None = None
             if MAIN_CLIENT_NAME not in self.clients:
                 provider = self.ai_bot.profile.get_provider(MAIN_CLIENT_NAME)
                 self.clients[MAIN_CLIENT_NAME] = LLMClient.from_provider(provider)
@@ -225,7 +226,8 @@ class AIResponder:
                     logging.exception(e)
             if llm_response is None:
                 if len(exceptions) > 0:
-                    raise RuntimeError("Cannot generate response and all fallbacks failed. Last error: ", exceptions[-1])
+                    last_err = exceptions[-1]
+                    raise RuntimeError(f"Cannot generate response and all fallbacks failed. Last error: {last_err}") from last_err
                 else:
                     raise RuntimeError("Cannot generate response and all fallbacks failed. Last fallback generated an empty response")
 

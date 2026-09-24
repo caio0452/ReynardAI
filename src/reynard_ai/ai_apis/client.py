@@ -127,13 +127,18 @@ class LLMClient:
         return cls.from_openai_client(client)
 
     async def send_request(self, *, prompt: Prompt, params: LLMRequestParams):
-        raw_response = await self.client.chat.completions.create(
-            messages=prompt.to_openai_format(), # type: ignore
-            model=params.model_name,
-            max_tokens=params.max_tokens,
-            temperature=params.temperature,
-            logit_bias=params.logit_bias
-        )
+        try:
+            raw_response = await self.client.chat.completions.create(
+                messages=prompt.to_openai_format(), # type: ignore
+                model=params.model_name,
+                max_tokens=params.max_tokens,
+                temperature=params.temperature,
+                logit_bias=params.logit_bias
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed request to model '{params.model_name}': {e}"
+            ) from e
         
         if raw_response.choices is None or len(raw_response.choices) == 0:
             resp_json = json.loads(raw_response.to_json())

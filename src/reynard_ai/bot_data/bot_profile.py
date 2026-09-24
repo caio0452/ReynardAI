@@ -24,6 +24,7 @@ class FalImageGenModuleConfig(BaseModel):
 
 class MiscOptions(BaseModel):
     llm_fallbacks: list[str] = Field(default_factory=list)
+    embedding_model_name: str = "text-embedding-3-large"
     only_ping_on_response_finish: bool = False
     enable_personality_rewrite: bool = False
     enable_knowledge_retrieval: bool = False
@@ -183,6 +184,16 @@ class Profile(BaseModel):
         if provider is None:
             raise RuntimeError("Failed to get embeddings provider 'EMBEDDINGS'")
         return provider
+
+    def create_embeddings_client(self, embedding_dim: int, mrl_dim: int | None = None):
+        from ..ai_apis.client import EmbeddingsClient
+
+        return EmbeddingsClient(
+            self.get_embedding_provider(),
+            self.options.embedding_model_name,
+            embedding_dim,
+            mrl_dim,
+        )
 
     def get_prompt(self, target_name: str) -> Prompt:
         return self.get_prompt_by_name(target_name)

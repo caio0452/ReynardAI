@@ -24,7 +24,7 @@ class OpenAIModerator(ContentModerator):
 class EmbeddingsClient:
     def __init__(self, provider: ProviderData, model_name: str, embedding_dim: int, mrl_dim: int | None = None):
         self.client = openai.AsyncOpenAI(
-            api_key=provider.api_key, 
+            api_key=provider.api_key,
             base_url=provider.api_base
         )
         self.model_name = model_name
@@ -120,7 +120,7 @@ class LLMClient:
     @classmethod
     def from_provider(cls, provider: ProviderData):
         client = openai.AsyncOpenAI(
-            api_key=provider.api_key, 
+            api_key=provider.api_key,
             base_url=provider.api_base,
             timeout=15
         )

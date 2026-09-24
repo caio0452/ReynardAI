@@ -56,6 +56,7 @@ class ReynardAIBotData(AbstractReynardAIBotData):
         if modules:
             for module in modules:
                 module.register(self)
+            self.profile.validate_api_keys_for_enabled_features()
 
     def update_memory_structures(self) -> None:
         self.short_term_memory = SynchronizedMessageHistory(

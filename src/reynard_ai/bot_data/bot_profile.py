@@ -129,6 +129,14 @@ class Profile(BaseModel):
             if not provider or not provider.api_key:
                 raise ValueError("Medium-term memory summarization is enabled in config, but API key for 'HISTORY_SUMMARIZE' is missing.")
 
+        if (
+            self.options.enable_knowledge_retrieval
+            or self.memory_settings.enable_long_term_memory
+        ) and not any(provider.api_key for provider in self.providers.values()):
+            raise ValueError(
+                "Knowledge retrieval or long-term memory is enabled, but no provider API key is configured for embeddings."
+            )
+
         if self.fal_image_gen_config.enabled:
             if not self.fal_image_gen_config.api_key:
                 raise ValueError("Fal image generation is enabled in config, but API key is missing.")

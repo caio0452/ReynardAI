@@ -83,7 +83,6 @@ class ProfileDefaultsProvider:
 class Profile(BaseModel):
     options: MiscOptions = Field(default_factory=MiscOptions)
     memory_settings: MemorySettings = Field(default_factory=MemorySettings)
-    embedding_provider: str = "openai"
     prompts: dict[str, Prompt] = Field(default_factory=dict)
     request_params: dict[str, LLMRequestParams] = Field(default_factory=dict)
     lang: dict[str, str] = Field(default_factory=dict)
@@ -134,10 +133,10 @@ class Profile(BaseModel):
             self.options.enable_knowledge_retrieval
             or self.memory_settings.enable_long_term_memory
         ):
-            embedding_provider = self._find_provider(self.embedding_provider)
+            embedding_provider = self._find_provider("EMBEDDINGS")
             if not embedding_provider or not embedding_provider.api_key:
                 raise ValueError(
-                    f"Embeddings are enabled, but API key for provider '{self.embedding_provider}' is missing."
+                    "Embeddings are enabled, but API key for provider 'EMBEDDINGS' is missing."
                 )
 
         if self.fal_image_gen_config.enabled:
@@ -180,11 +179,9 @@ class Profile(BaseModel):
         return self.get_provider_by_name(target_name)
 
     def get_embedding_provider(self) -> ProviderData:
-        provider = self._find_provider(self.embedding_provider)
+        provider = self._find_provider("EMBEDDINGS")
         if provider is None:
-            raise RuntimeError(
-                f"Failed to get embeddings provider '{self.embedding_provider}'"
-            )
+            raise RuntimeError("Failed to get embeddings provider 'EMBEDDINGS'")
         return provider
 
     def get_prompt(self, target_name: str) -> Prompt:

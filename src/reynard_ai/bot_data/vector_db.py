@@ -7,7 +7,7 @@ from typing import Any
 from dataclasses import dataclass
 from ..ai_apis.providers import ProviderData
 from ..ai_apis.client import EmbeddingsClient
-from pymilvus import AsyncMilvusClient, DataType
+from pymilvus import AsyncMilvusClient, MilvusClient, DataType
 
 class VectorDatabaseConnection:
     def __init__(self, client: AsyncMilvusClient, vectorizer: EmbeddingsClient):
@@ -85,6 +85,7 @@ class VectorDatabase:
         
     def __init__(self, vectorizer: EmbeddingsClient, path: str):
         self.vectorizer = vectorizer
+        self.path = path
         parent_dir = os.path.dirname(os.path.abspath(path))
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
@@ -101,7 +102,7 @@ class VectorDatabase:
 
     async def connect(self) -> VectorDatabaseConnection:
         def make_schema():
-            schema = AsyncMilvusClient.create_schema(
+            schema = MilvusClient.create_schema(
                 auto_id=False,
                 description="Brain schema",
             )
@@ -112,7 +113,7 @@ class VectorDatabase:
             return schema
 
         def create_collection_index_params():
-            index_params = AsyncMilvusClient.prepare_index_params()
+            index_params = MilvusClient.prepare_index_params()
             index_params.add_index(
                 field_name="vector",
                 metric_type="COSINE",
@@ -121,17 +122,24 @@ class VectorDatabase:
             )
             return index_params
 
+        # Milvus dislikes creating collections async
+        sync_client = MilvusClient(self.path)
+        try:
+            for collection_name in ("knowledge", "memories"):
+                if not sync_client.has_collection(collection_name):
+                    schema = make_schema()
+                    index_params = create_collection_index_params()
+                    sync_client.create_collection(
+                        collection_name=collection_name,
+                        schema=schema,
+                        index_params=index_params,
+                    )
+        finally:
+            sync_client.close()
+
+        # Load collections sync
         for collection_name in ("knowledge", "memories"):
-            if not await self.async_client.has_collection(collection_name):
-                schema = make_schema()
-                index_params = create_collection_index_params()
-                await self.async_client.create_collection(
-                    collection_name=collection_name,
-                    schema=schema,
-                    index_params=index_params,
-                )
-            else:
-                await self.async_client.load_collection(collection_name)
+            await self.async_client.load_collection(collection_name)
         
         return VectorDatabaseConnection(self.async_client, self.vectorizer)
 

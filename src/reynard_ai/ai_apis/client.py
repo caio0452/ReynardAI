@@ -141,8 +141,10 @@ class LLMClient:
                 logit_bias=params.logit_bias
             )
         except Exception as e:
+            request_url = getattr(getattr(e, "request", None), "url", None)
+            endpoint = f" at {request_url}" if request_url else ""
             raise RuntimeError(
-                f"Failed request to model '{params.model_name}': {e}"
+                f"Failed request to model '{params.model_name}'{endpoint}: {e}"
             ) from e
         
         if raw_response.choices is None or len(raw_response.choices) == 0:

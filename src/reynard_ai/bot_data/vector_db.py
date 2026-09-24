@@ -9,6 +9,8 @@ from ..ai_apis.providers import ProviderData
 from ..ai_apis.client import EmbeddingsClient
 from pymilvus import AsyncMilvusClient, MilvusClient, DataType
 
+MAX_VARCHAR_BYTES = 65_535
+
 class VectorDatabaseConnection:
     def __init__(self, client: AsyncMilvusClient, vectorizer: EmbeddingsClient):
         self._async_client = client
@@ -109,7 +111,7 @@ class VectorDatabase:
             schema.add_field("id", DataType.INT64, is_primary=True)
             schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self.vectorizer.embedding_dim)
             schema.add_field("metadata", DataType.JSON)
-            schema.add_field("text", DataType.VARCHAR, max_length=8192)
+            schema.add_field("text", DataType.VARCHAR, max_length=MAX_VARCHAR_BYTES)
             return schema
 
         def create_collection_index_params():
@@ -142,4 +144,3 @@ class VectorDatabase:
             await self.async_client.load_collection(collection_name)
         
         return VectorDatabaseConnection(self.async_client, self.vectorizer)
-

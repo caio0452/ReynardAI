@@ -12,7 +12,7 @@ from typing import Literal, Dict, Any
 from pydantic import BaseModel, Field
 from ..ai_apis.client import EmbeddingsClient
 from ..chat_base.message_snapshot import MessageSnapshot
-from ..bot_data.vector_db import VectorDatabase, VectorDatabaseConnection
+from ..bot_data.vector_db import MAX_VARCHAR_BYTES, VectorDatabase, VectorDatabaseConnection
 
 class RetrievalConfig(BaseModel):
     max_chunks: int = 5
@@ -160,8 +160,32 @@ class KnowledgeIndex:
         else:
             raise RuntimeError(f"Unknown chunking strategy: {config.strategy}")
 
+    @staticmethod
+    def split_for_storage(text: str, max_bytes: int = MAX_VARCHAR_BYTES) -> list[str]:
+        chunks: list[str] = []
+        current: list[str] = []
+        current_bytes = 0
+
+        for character in text:
+            character_bytes = len(character.encode("utf-8"))
+            if current and current_bytes + character_bytes > max_bytes:
+                chunks.append("".join(current))
+                current = []
+                current_bytes = 0
+            current.append(character)
+            current_bytes += character_bytes
+
+        if current:
+            chunks.append("".join(current))
+        return chunks
+
     async def chunk_and_index(self, text: str, config: ChunkingConfig, *, metadata={"type": "knowledge"}) -> int:
         chunks = KnowledgeIndex.chunk_text(text, config)
+        chunks = [
+            stored_chunk
+            for chunk in chunks
+            for stored_chunk in KnowledgeIndex.split_for_storage(chunk)
+        ]
         if not chunks: 
             return 0
             
@@ -192,42 +216,52 @@ class KnowledgeIndex:
                 total_indexed += len(batch)
             except Exception as e:
                 logging.error(f"Failed to index batch starting at {i}: {e}")
+                raise
                 
         return total_indexed
 
-    async def index_files(self, files: list[str]):
+    async def index_files(self, files: list[str], max_concurrent_tasks: int = 4):
+        if max_concurrent_tasks < 1:
+            raise ValueError("max_concurrent_tasks must be at least 1")
+
         strategy_config = self.config
         txt_files = [file for file in files if file.endswith('.txt')]
         non_txt_files = [file for file in files if not file.endswith('.txt') and not file.endswith('.json')]
+        semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
         for file in non_txt_files:
             logging.info(f"Error: {file} is not a .txt file. All knowledge must be in text files. Skipping.")
 
         async def process_file(file_path):
-            file_name = os.path.basename(file_path)
-            file_config = strategy_config.files.get(file_name, strategy_config.default)
-            def _read_file():
-                with open(file_path, 'r') as file:
-                    return file.read()
-            text = await asyncio.to_thread(_read_file)
-            logging.info(f"Chunking file '{file_name}' using strategy: {file_config.strategy}")
-            n_chunks = await self.chunk_and_index(text, file_config)
-            return n_chunks
+            async with semaphore:
+                file_name = os.path.basename(file_path)
+                file_config = strategy_config.files.get(file_name, strategy_config.default)
+                def _read_file():
+                    with open(file_path, 'r') as file:
+                        return file.read()
+                text = await asyncio.to_thread(_read_file)
+                logging.info(f"Chunking file '{file_name}' using strategy: {file_config.strategy}")
+                n_chunks = await self.chunk_and_index(text, file_config)
+                return n_chunks
 
         tasks = [process_file(file) for file in txt_files]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         total_chunks = 0
+        failed_files = 0
         for file_path, result in zip(txt_files, results):
             if isinstance(result, Exception):
+                failed_files += 1
                 logging.error(f"Error indexing {file_path}", exc_info=result)
             elif isinstance(result, int):
                 total_chunks += result
                 logging.info(f"Indexed {file_path}: {result} chunks")
 
         logging.info(f"Total chunks indexed: {total_chunks}")
+        if failed_files:
+            logging.error(f"Failed to index {failed_files} of {len(txt_files)} knowledge files")
     
-    async def index_from_folder(self, path, max_concurrent_tasks=8): 
+    async def index_from_folder(self, path, max_concurrent_tasks=4):
         if not os.path.exists(path):
             logging.info(f"The knowledge folder, located in '{path}' does not exist. Skipping knowledge indexing.")
             return
@@ -237,7 +271,7 @@ class KnowledgeIndex:
             logging.info(f"No files in knowledge folder '{path}', skipping indexing")
             return
         
-        await self.index_files(folder_files)
+        await self.index_files(folder_files, max_concurrent_tasks=max_concurrent_tasks)
 
     async def retrieve(self, related_text: str):
         max_chunks = self.config.retrieval.max_chunks

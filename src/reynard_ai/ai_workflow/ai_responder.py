@@ -254,6 +254,7 @@ class AIResponder:
         except Exception as e:
             error_message = f"Error while generating response: {str(e)}"
             self.logger.verbose(error_message, category="ERROR")
+            logging.exception("Error while generating response")
             return AIResponder.Response(
                 ai_text=None,
                 attachment_description=None,

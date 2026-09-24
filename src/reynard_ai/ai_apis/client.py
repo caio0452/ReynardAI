@@ -119,6 +119,11 @@ class LLMClient:
 
     @classmethod
     def from_provider(cls, provider: ProviderData):
+        if not provider.api_key:
+            raise ValueError(
+                f"API key is missing for provider '{provider.provider_name}'. "
+                "Set its api_key in providers.json to a configured environment variable."
+            )
         client = openai.AsyncOpenAI(
             api_key=provider.api_key,
             base_url=provider.api_base,
